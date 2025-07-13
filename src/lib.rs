@@ -4,6 +4,7 @@ pub mod config;
 pub mod database;
 pub mod historical; // Add historical module
 pub mod indexer;
+pub mod network_stats; // Add network stats module
 pub mod rpc;
 pub mod web;
 
@@ -16,6 +17,7 @@ use rpc::RpcClient;
 use std::sync::Arc;
 use tracing::{error, info};
 use crate::historical::HistoricalTransactionService;
+use crate::network_stats::NetworkStatsService;
 
 /// Represents the core application with all its services
 pub struct App {
@@ -25,18 +27,22 @@ pub struct App {
     pub beacon: Arc<BeaconClient>,
     pub indexer: Arc<IndexerService>,
     pub historical: Arc<HistoricalTransactionService>,
+    pub network_stats: Arc<NetworkStatsService>,
 }
 
 impl App {
     /// Initialize a new application instance
     pub async fn init() -> Result<Self> {
         // Load configuration
-        let config = AppConfig::load()?;
+        let mut config = AppConfig::load()?;
         info!("Config loaded: {}", config);
 
         // Initialize database
         let db = Arc::new(DatabaseService::new(&config.database_url).await?);
         info!("Database initialized");
+
+        // Resolve start_block using database configuration
+        config.resolve_start_block(&db).await?;
 
         // Initialize RPC client
         let rpc = Arc::new(RpcClient::new(&config.eth_rpc_url, config.clone())?);
@@ -66,6 +72,16 @@ impl App {
         }
         info!("Historical transaction service initialized");
 
+        // Initialize network stats service
+        let network_stats = Arc::new(NetworkStatsService::new(
+            Arc::clone(&rpc),
+            Arc::clone(&historical),
+        ));
+        
+        // Start background updates for network stats
+        network_stats.clone().start_background_updates().await;
+        info!("Network stats service initialized");
+
         Ok(Self {
             config,
             db,
@@ -73,6 +89,7 @@ impl App {
             beacon,
             indexer,
             historical,
+            network_stats,
         })
     }
 

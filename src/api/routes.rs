@@ -28,6 +28,7 @@ pub async fn create_router(app: Arc<App>) -> Router {
         .route("/health", get(health_check))
         .route("/stats", get(get_stats))
         .route("/network/latest", get(get_network_latest))
+        .route("/network/stats", get(get_network_stats))
         .route("/blocks", get(get_blocks))
         .route("/blocks/since", get(get_blocks_since))
         .route("/blocks/:number", get(get_block_by_number))

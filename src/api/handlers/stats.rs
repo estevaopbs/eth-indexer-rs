@@ -78,6 +78,8 @@ pub async fn get_stats(Extension(app): Extension<Arc<App>>) -> Json<IndexerStats
         total_transactions,
         total_transactions_declared: total_transactions_declared_with_history,
         total_transactions_indexed: historical_count + total_transactions_indexed,
+        real_transactions_indexed: total_transactions_indexed, // Only transactions from start_block onwards
+        total_blockchain_transactions: historical_count + total_transactions_indexed, // Historical + indexed
         total_accounts: total_accounts as i64,
         indexer_status: indexer_status.to_string(),
         sync_percentage,

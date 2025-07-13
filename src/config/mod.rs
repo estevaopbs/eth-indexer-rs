@@ -84,6 +84,52 @@ impl AppConfig {
 
         Ok(config)
     }
+
+    /// Resolve the start_block using database configuration and environment variables
+    /// Returns the final start_block value to use, checking database first, then env vars
+    pub async fn resolve_start_block(&mut self, db: &crate::database::DatabaseService) -> Result<(), ConfigError> {
+        use tracing::{info, warn};
+
+        // Get start_block from environment/config file
+        let env_start_block = self.start_block;
+
+        // Get start_block from database
+        let db_start_block = db.get_start_block().await
+            .map_err(|e| ConfigError::InvalidValue(format!("Failed to get start_block from database: {}", e)))?;
+
+        match (db_start_block, env_start_block) {
+            (Some(db_value), Some(env_value)) => {
+                // Both database and environment have values
+                if db_value != env_value {
+                    warn!("Start block mismatch! Database has {}, environment/config has {}. Using database value.", db_value, env_value);
+                } else {
+                    info!("Start block consistent: {} (database and environment match)", db_value);
+                }
+                self.start_block = Some(db_value);
+            },
+            (Some(db_value), None) => {
+                // Only database has value
+                info!("Using start block from database: {}", db_value);
+                self.start_block = Some(db_value);
+            },
+            (None, Some(env_value)) => {
+                // Only environment has value, save to database
+                info!("Saving start block from environment to database: {}", env_value);
+                db.set_start_block(env_value).await
+                    .map_err(|e| ConfigError::InvalidValue(format!("Failed to save start_block to database: {}", e)))?;
+                self.start_block = Some(env_value);
+            },
+            (None, None) => {
+                // Neither has value, use default of 0
+                info!("No start block configured, using default: 0");
+                db.set_start_block(0).await
+                    .map_err(|e| ConfigError::InvalidValue(format!("Failed to save default start_block to database: {}", e)))?;
+                self.start_block = Some(0);
+            }
+        }
+
+        Ok(())
+    }
 }
 
 impl fmt::Display for AppConfig {

@@ -29,10 +29,10 @@ function formatEth(value) {
   if (!value) return "0";
   // Convert from wei to ETH
   const ethValue = Number(BigInt(value)) / Number(10 ** 18);
-  
+
   // Format to 5 decimal places and remove trailing zeros
   const formatted = ethValue.toFixed(5).replace(/\.?0+$/, '');
-  
+
   return formatted;
 }
 
@@ -55,7 +55,7 @@ async function initializeData() {
   try {
     // Load initial stats
     await loadStats();
-    
+
     // Load initial blocks and set up delta tracking
     const blocksResponse = await fetch(`${API_BASE}/blocks?per_page=5`);
     if (blocksResponse.ok) {
@@ -64,7 +64,7 @@ async function initializeData() {
         // Set up blocks table
         const blocksList = document.getElementById("recent-blocks");
         const fragment = document.createDocumentFragment();
-        
+
         for (const block of blocksData.blocks) {
           const row = document.createElement("tr");
           row.className = "hover:bg-gray-50";
@@ -78,13 +78,13 @@ async function initializeData() {
           `;
           fragment.appendChild(row);
         }
-        
+
         blocksList.innerHTML = "";
         blocksList.appendChild(fragment);
-        
+
         // Initialize lastBlockNumber for delta updates
         lastBlockNumber = Math.max(...blocksData.blocks.map(b => b.number));
-        
+
         // Initialize charts
         // blocksData.blocks comes in descending order (newest first)
         // Charts need chronological order (oldest first), so reverse
@@ -98,7 +98,7 @@ async function initializeData() {
       // API call failed, initialize empty charts
       showEmptyCharts();
     }
-    
+
     // Load initial transactions and set up delta tracking
     const txsResponse = await fetch(`${API_BASE}/transactions?per_page=5`);
     if (txsResponse.ok) {
@@ -107,7 +107,7 @@ async function initializeData() {
         // Set up transactions table
         const txsList = document.getElementById("recent-txs");
         const fragment = document.createDocumentFragment();
-        
+
         for (const tx of txsData.transactions) {
           const row = document.createElement("tr");
           row.className = "hover:bg-gray-50";
@@ -119,24 +119,24 @@ async function initializeData() {
               <a href="/accounts.html?address=${tx.from_address}" class="hash-link">${truncateHash(tx.from_address)}</a>
             </td>
             <td class="px-3 py-4 whitespace-nowrap text-sm font-mono truncate">
-              ${tx.to_address 
-                ? `<a href="/accounts.html?address=${tx.to_address}" class="hash-link">${truncateHash(tx.to_address)}</a>`
-                : '<span class="text-gray-500 text-sm">Contract Creation</span>'
-              }
+              ${tx.to_address
+              ? `<a href="/accounts.html?address=${tx.to_address}" class="hash-link">${truncateHash(tx.to_address)}</a>`
+              : '<span class="text-gray-500 text-sm">Contract Creation</span>'
+            }
             </td>
             <td class="px-3 py-4 whitespace-nowrap text-sm font-mono text-right">${formatEth(tx.value)}</td>
           `;
           fragment.appendChild(row);
         }
-        
+
         txsList.innerHTML = "";
         txsList.appendChild(fragment);
-        
+
         // Initialize lastTransactionHash for delta updates
         lastTransactionHash = txsData.transactions[0].hash;
       }
     }
-    
+
   } catch (error) {
     console.error("Error initializing data:", error);
     showEmptyBlocksTable();
@@ -151,43 +151,53 @@ async function loadStats() {
     console.log('Loading stats...');
     const controller = new AbortController();
     const timeoutId = setTimeout(() => controller.abort(), 10000); // 10 second timeout
-    
-    const [statsResponse, networkResponse] = await Promise.all([
+
+    const [statsResponse, networkResponse, networkStatsResponse] = await Promise.all([
       fetch(`${API_BASE}/stats`, { signal: controller.signal }),
-      fetch(`${API_BASE}/network/latest`, { signal: controller.signal })
+      fetch(`${API_BASE}/network/latest`, { signal: controller.signal }),
+      fetch(`${API_BASE}/network/stats`, { signal: controller.signal })
     ]);
-    
+
     clearTimeout(timeoutId);
     console.log('Stats response:', statsResponse.status);
-    
+
     if (!statsResponse.ok) {
       throw new Error(`Stats API returned ${statsResponse.status}`);
     }
-    if (!networkResponse.ok) {
-      console.warn('Network API failed, using fallback');
-    }
-    
+
     const data = await statsResponse.json();
     console.log('Stats data:', data);
-    
+
     let networkData = { latest_network_block: 0 };
     if (networkResponse.ok) {
       networkData = await networkResponse.json();
     }
-    
-    latestNetworkBlock = networkData.latest_network_block;
 
-    // Animate changes in stats
-    updateStatWithAnimation("latest-block", formatNumber(data.latest_block));
-    updateStatWithAnimation("total-txs", formatNumber(data.total_transactions_indexed));
-    updateStatWithAnimation("total-accounts", formatNumber(data.total_accounts));
+    let networkStatsData = {
+      latest_network_block: 0,
+      total_network_transactions: 0,
+      total_network_accounts: 0
+    };
+    if (networkStatsResponse.ok) {
+      networkStatsData = await networkStatsResponse.json();
+    }
+
+    latestNetworkBlock = networkData.latest_network_block || networkStatsData.latest_network_block;
+
+    // Update network stats
+    updateStatWithAnimation("latest-network-block", formatNumber(networkStatsData.latest_network_block));
+    updateStatWithAnimation("total-network-txs", formatNumber(networkStatsData.total_network_transactions));
+    updateStatWithAnimation("total-network-accounts", formatNumber(networkStatsData.total_network_accounts));
+
+    // Update indexed stats
+    updateStatWithAnimation("latest-indexed-block", formatNumber(data.latest_block));
+    updateStatWithAnimation("total-indexed-txs", formatNumber(data.real_transactions_indexed));
+    updateStatWithAnimation("total-blockchain-txs", formatNumber(data.total_blockchain_transactions));
+    updateStatWithAnimation("total-indexed-accounts", formatNumber(data.total_accounts));
     updateStatWithAnimation("sync-status", data.indexer_status);
-    
+
     // Update progress bar
     updateProgressBar(data.latest_block, latestNetworkBlock, data.start_block || 0);
-    
-    // Update transaction progress bar (nested) - use current block data
-    updateTransactionProgressBar(data.current_block_tx_indexed, data.current_block_tx_declared);
 
     // Update status icon color
     const statusIcon = document.getElementById("status-icon");
@@ -213,9 +223,9 @@ function updateStatWithAnimation(elementId, newValue) {
     console.warn(`Element with id '${elementId}' not found`);
     return;
   }
-  
+
   const oldValue = element.textContent.trim();
-  
+
   // Only animate if value actually changed and it's not the initial load
   if (oldValue !== newValue && oldValue !== "..." && oldValue !== "") {
     element.classList.add("updating");
@@ -223,7 +233,7 @@ function updateStatWithAnimation(elementId, newValue) {
       element.classList.remove("updating");
     }, 300);
   }
-  
+
   element.textContent = newValue;
 }
 
@@ -233,22 +243,22 @@ async function loadRecentBlocks() {
     console.log('Loading recent blocks...');
     const controller = new AbortController();
     const timeoutId = setTimeout(() => controller.abort(), 10000); // 10 second timeout
-    
+
     const response = await fetch(`${API_BASE}/blocks?per_page=5`, { signal: controller.signal });
     clearTimeout(timeoutId);
-    
+
     console.log('Blocks response:', response.status);
-    
+
     if (!response.ok) {
       throw new Error(`API returned ${response.status}`);
     }
-    
+
     const data = await response.json();
     console.log('Blocks data:', data);
 
     if (data.blocks && data.blocks.length > 0) {
       const blocksList = document.getElementById("recent-blocks");
-      
+
       // Build new content in a document fragment to avoid reflows
       const fragment = document.createDocumentFragment();
 
@@ -257,21 +267,18 @@ async function loadRecentBlocks() {
         row.className = "hover:bg-gray-50 fade-in";
         row.innerHTML = `
                       <td class="px-3 py-4 whitespace-nowrap text-left">
-                          <a href="/blocks.html?number=${
-                            block.number
-                          }" class="text-blue-600 hover:text-blue-900">${
-          block.number
-        }</a>
+                          <a href="/blocks.html?number=${block.number
+          }" class="text-blue-600 hover:text-blue-900">${block.number
+          }</a>
                       </td>
-                      <td class="px-3 py-4 whitespace-nowrap text-left">${
-                        block.transaction_count
-                      }</td>
+                      <td class="px-3 py-4 whitespace-nowrap text-left">${block.transaction_count
+          }</td>
                       <td class="px-3 py-4 whitespace-nowrap text-left">${formatNumber(
-                        block.gas_used || 0
-                      )}</td>
+            block.gas_used || 0
+          )}</td>
                       <td class="px-3 py-4 whitespace-nowrap text-right">${formatTimestamp(
-                        block.timestamp
-                      )}</td>
+            block.timestamp
+          )}</td>
                   `;
         fragment.appendChild(row);
       }
@@ -280,12 +287,12 @@ async function loadRecentBlocks() {
       const newContent = fragment.cloneNode(true);
       const newHTML = Array.from(newContent.children).map(row => row.innerHTML).join('');
       const currentHTML = Array.from(blocksList.children).map(row => row.innerHTML).join('');
-      
+
       // Only update and animate if content has changed
       if (newHTML !== currentHTML) {
         // Add updating class for smooth transition
         blocksList.classList.add("table-updating");
-        
+
         // Replace content in one operation to minimize reflow
         blocksList.innerHTML = "";
         blocksList.appendChild(fragment);
@@ -315,11 +322,11 @@ async function loadRecentBlocks() {
 async function loadRecentTransactions() {
   try {
     const response = await fetch(`${API_BASE}/transactions?per_page=5`);
-    
+
     if (!response.ok) {
       throw new Error(`API returned ${response.status}`);
     }
-    
+
     const data = await response.json();
 
     const txsList = document.getElementById("recent-txs");
@@ -333,33 +340,29 @@ async function loadRecentTransactions() {
         row.className = "hover:bg-gray-50 fade-in";
         row.innerHTML = `
                       <td class="px-3 py-4 whitespace-nowrap text-sm font-mono truncate">
-                          <a href="/transactions.html?hash=${
-                            tx.hash
-                          }" class="hash-link">${truncateHash(
-          tx.hash
-        )}</a>
+                          <a href="/transactions.html?hash=${tx.hash
+          }" class="hash-link">${truncateHash(
+            tx.hash
+          )}</a>
                       </td>
                       <td class="px-3 py-4 whitespace-nowrap text-sm font-mono truncate">
-                          <a href="/accounts.html?address=${
-                            tx.from_address
-                          }" class="hash-link">${truncateHash(
-          tx.from_address
-        )}</a>
+                          <a href="/accounts.html?address=${tx.from_address
+          }" class="hash-link">${truncateHash(
+            tx.from_address
+          )}</a>
                       </td>
                       <td class="px-3 py-4 whitespace-nowrap text-sm font-mono truncate">
-                          ${
-                            tx.to_address
-                              ? `<a href="/accounts.html?address=${
-                                  tx.to_address
-                                }" class="hash-link">${truncateHash(
-                                  tx.to_address
-                                )}</a>`
-                              : '<span class="text-gray-500 text-sm">Contract Creation</span>'
-                          }
+                          ${tx.to_address
+            ? `<a href="/accounts.html?address=${tx.to_address
+            }" class="hash-link">${truncateHash(
+              tx.to_address
+            )}</a>`
+            : '<span class="text-gray-500 text-sm">Contract Creation</span>'
+          }
                       </td>
                       <td class="px-3 py-4 whitespace-nowrap text-sm font-mono text-right">${formatEth(
-                        tx.value
-                      )}</td>
+            tx.value
+          )}</td>
                   `;
         fragment.appendChild(row);
       }
@@ -368,16 +371,16 @@ async function loadRecentTransactions() {
       const newContent = fragment.cloneNode(true);
       const newHTML = Array.from(newContent.children).map(row => row.innerHTML).join('');
       const currentHTML = Array.from(txsList.children).map(row => row.innerHTML).join('');
-      
+
       // Only update and animate if content has changed
       if (newHTML !== currentHTML) {
         // Add updating class for smooth transition
         txsList.classList.add("table-updating");
-        
+
         // Replace content in one operation to minimize reflow
         txsList.innerHTML = "";
         txsList.appendChild(fragment);
-        
+
         // Remove updating class
         setTimeout(() => {
           txsList.classList.remove("table-updating");
@@ -397,11 +400,11 @@ async function loadRecentTransactions() {
 async function loadLiveTransactions() {
   try {
     const response = await fetch(`${API_BASE}/transactions/live`);
-    
+
     if (!response.ok) {
       throw new Error(`API returned ${response.status}`);
     }
-    
+
     const data = await response.json();
 
     const txsList = document.getElementById("recent-txs");
@@ -415,33 +418,29 @@ async function loadLiveTransactions() {
         row.className = "hover:bg-gray-50 fade-in";
         row.innerHTML = `
                       <td class="px-3 py-4 whitespace-nowrap text-sm font-mono truncate">
-                          <a href="/transactions.html?hash=${
-                            tx.hash
-                          }" class="hash-link">${truncateHash(
-          tx.hash
-        )}</a>
+                          <a href="/transactions.html?hash=${tx.hash
+          }" class="hash-link">${truncateHash(
+            tx.hash
+          )}</a>
                       </td>
                       <td class="px-3 py-4 whitespace-nowrap text-sm font-mono truncate">
-                          <a href="/accounts.html?address=${
-                            tx.from_address
-                          }" class="hash-link">${truncateHash(
-          tx.from_address
-        )}</a>
+                          <a href="/accounts.html?address=${tx.from_address
+          }" class="hash-link">${truncateHash(
+            tx.from_address
+          )}</a>
                       </td>
                       <td class="px-3 py-4 whitespace-nowrap text-sm font-mono truncate">
-                          ${
-                            tx.to_address
-                              ? `<a href="/accounts.html?address=${
-                                  tx.to_address
-                                }" class="hash-link">${truncateHash(
-                                  tx.to_address
-                                )}</a>`
-                              : '<span class="text-gray-500 text-sm">Contract Creation</span>'
-                          }
+                          ${tx.to_address
+            ? `<a href="/accounts.html?address=${tx.to_address
+            }" class="hash-link">${truncateHash(
+              tx.to_address
+            )}</a>`
+            : '<span class="text-gray-500 text-sm">Contract Creation</span>'
+          }
                       </td>
                       <td class="px-3 py-4 whitespace-nowrap text-sm font-mono text-right">${formatEth(
-                        tx.value
-                      )}</td>
+            tx.value
+          )}</td>
                   `;
         fragment.appendChild(row);
       }
@@ -450,16 +449,16 @@ async function loadLiveTransactions() {
       const newContent = fragment.cloneNode(true);
       const newHTML = Array.from(newContent.children).map(row => row.innerHTML).join('');
       const currentHTML = Array.from(txsList.children).map(row => row.innerHTML).join('');
-      
+
       // Only update and animate if content has changed
       if (newHTML !== currentHTML) {
         // Add updating class for smooth transition
         txsList.classList.add("table-updating");
-        
+
         // Replace content in one operation to minimize reflow
         txsList.innerHTML = "";
         txsList.appendChild(fragment);
-        
+
         // Remove updating class
         setTimeout(() => {
           txsList.classList.remove("table-updating");
@@ -479,36 +478,20 @@ async function loadLiveTransactions() {
 async function loadTransactionStats() {
   try {
     const response = await fetch(`${API_BASE}/stats`);
-    
+
     if (!response.ok) {
       throw new Error(`API returned ${response.status}`);
     }
-    
+
     const data = await response.json();
-    
+
     // Update transaction-related stats with animation for changes
-    updateStatWithAnimation('total-txs', formatNumber(data.total_transactions_indexed));
-    updateStatWithAnimation('total-accounts', formatNumber(data.total_accounts));
-    updateStatWithAnimation('tx-indexed', formatNumber(data.total_transactions_indexed));
+    updateStatWithAnimation('total-indexed-txs', formatNumber(data.real_transactions_indexed));
+    updateStatWithAnimation('total-blockchain-txs', formatNumber(data.total_blockchain_transactions));
+    updateStatWithAnimation('total-indexed-accounts', formatNumber(data.total_accounts));
+    updateStatWithAnimation('tx-indexed', formatNumber(data.real_transactions_indexed));
     updateStatWithAnimation('tx-declared', formatNumber(data.total_transactions_declared));
-    
-    // Update transaction processing progress
-    const txProgressBar = document.getElementById("tx-progress-bar");
-    const txProgressText = document.getElementById("tx-progress-text");
-    if (txProgressBar && txProgressText) {
-      const progressPercentage = data.transaction_indexing_percentage || 0;
-      txProgressBar.style.width = `${progressPercentage}%`;
-      txProgressText.textContent = `${progressPercentage.toFixed(1)}%`;
-      
-      // Change color based on progress
-      if (progressPercentage >= 95) {
-        txProgressBar.className = "bg-green-600 h-1.5 rounded-full transition-all duration-500";
-      } else if (progressPercentage >= 80) {
-        txProgressBar.className = "bg-yellow-500 h-1.5 rounded-full transition-all duration-500";
-      } else {
-        txProgressBar.className = "bg-blue-600 h-1.5 rounded-full transition-all duration-500";
-      }
-    }
+
   } catch (error) {
     console.error("Error loading transaction stats:", error);
     throw error;
@@ -519,13 +502,13 @@ async function loadTransactionStats() {
 async function loadBlockStats() {
   try {
     const response = await fetch(`${API_BASE}/stats`);
-    
+
     if (!response.ok) {
       throw new Error(`API returned ${response.status}`);
     }
-    
+
     const data = await response.json();
-    
+
     // Update only block-related and other stats
     const elements = {
       'total-blocks': data.total_blocks,
@@ -558,7 +541,7 @@ async function loadBlockStats() {
 function updateNetworkProgress(latestBlock, networkBlock) {
   const progressBar = document.getElementById('network-progress-bar');
   const progressText = document.getElementById('network-progress-text');
-  
+
   if (progressBar && progressText) {
     const percentage = Math.min((latestBlock / networkBlock) * 100, 100);
     progressBar.style.width = `${percentage}%`;
@@ -585,7 +568,7 @@ document.addEventListener("DOMContentLoaded", () => {
 // Show/hide frequent data updating indicator
 function setFrequentDataUpdating(isUpdating) {
   // Update stats indicators for frequently updated items
-  const statsElements = ['total-txs', 'total-accounts', 'tx-indexed', 'tx-declared'];
+  const statsElements = ['latest-network-block', 'latest-indexed-block', 'total-network-txs', 'total-indexed-txs', 'total-blockchain-txs', 'total-network-accounts', 'total-indexed-accounts', 'tx-indexed', 'tx-declared'];
   statsElements.forEach(id => {
     const element = document.getElementById(id);
     if (element) {
@@ -631,7 +614,7 @@ function showEmptyBlocksTable() {
   if (blocksList) {
     blocksList.innerHTML = `
       <tr>
-        <td colspan="3" class="px-6 py-8 text-center text-gray-500">
+        <td colspan="4" class="px-6 py-8 text-center text-gray-500">
           <div class="flex flex-col items-center">
             <svg class="w-8 h-8 mb-2 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
               <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z"></path>
@@ -669,7 +652,7 @@ function showEmptyCharts() {
   // This prevents the issue of showing fixed gas_limit values
   const gasCtx = document.getElementById("gas-chart");
   const txsCtx = document.getElementById("txs-chart");
-  
+
   if (gasCtx && !gasChart) {
     // Create empty gas chart without data
     gasChart = new Chart(gasCtx.getContext("2d"), {
@@ -713,17 +696,17 @@ function showEmptyCharts() {
           legend: { display: true },
           tooltip: {
             callbacks: {
-              title: function(context) {
+              title: function (context) {
                 const blockIndex = context[0].dataIndex;
                 const blocks = this.chart.blockData || [];
                 return blocks[blockIndex] ? `Block #${blocks[blockIndex].number}` : '';
               },
-              label: function(context) {
+              label: function (context) {
                 const blockIndex = context.dataIndex;
                 const blocks = this.chart.blockData || [];
                 const block = blocks[blockIndex];
                 if (!block) return `${context.dataset.label}: ${context.parsed.y.toLocaleString()}`;
-                
+
                 const efficiency = block.gas_limit > 0 ? ((block.gas_used / block.gas_limit) * 100).toFixed(2) : 0;
                 return [
                   `${context.dataset.label}: ${context.parsed.y.toLocaleString()}`,
@@ -738,7 +721,7 @@ function showEmptyCharts() {
     });
     gasChart.blockData = [];
   }
-  
+
   if (txsCtx && !txsChart) {
     // Create empty transactions chart without data
     txsChart = new Chart(txsCtx.getContext("2d"), {
@@ -770,19 +753,19 @@ function showEmptyCharts() {
           legend: { display: true },
           tooltip: {
             callbacks: {
-              title: function(context) {
+              title: function (context) {
                 const blockIndex = context[0].dataIndex;
                 const blocks = this.chart.blockData || [];
                 return blocks[blockIndex] ? `Block #${blocks[blockIndex].number}` : '';
               },
-              label: function(context) {
+              label: function (context) {
                 const blockIndex = context.dataIndex;
                 const blocks = this.chart.blockData || [];
                 const block = blocks[blockIndex];
                 const hasTransactions = this.chart.hasTransactions;
-                
+
                 if (!block) return `${context.dataset.label}: ${context.parsed.y.toLocaleString()}`;
-                
+
                 if (hasTransactions) {
                   return `Transactions: ${block.transaction_count}`;
                 } else {
@@ -876,17 +859,17 @@ function createGasChart(blocks) {
         },
         tooltip: {
           callbacks: {
-            title: function(context) {
+            title: function (context) {
               const blockIndex = context[0].dataIndex;
               const blocks = this.chart.blockData || [];
               return blocks[blockIndex] ? `Block #${blocks[blockIndex].number}` : '';
             },
-            label: function(context) {
+            label: function (context) {
               const blockIndex = context.dataIndex;
               const blocks = this.chart.blockData || [];
               const block = blocks[blockIndex];
               if (!block) return `${context.dataset.label}: ${context.parsed.y.toLocaleString()}`;
-              
+
               const efficiency = block.gas_limit > 0 ? ((block.gas_used / block.gas_limit) * 100).toFixed(2) : 0;
               return [
                 `${context.dataset.label}: ${context.parsed.y.toLocaleString()}`,
@@ -899,7 +882,7 @@ function createGasChart(blocks) {
       }
     },
   });
-  
+
   // Store block data for tooltips
   gasChart.blockData = blocks;
 }
@@ -910,49 +893,25 @@ function updateProgressBar(currentBlock, networkBlock, startBlock = 0) {
   const currentBlockProgress = document.getElementById('current-block-progress');
   const startBlockProgress = document.getElementById('start-block-progress');
   const blockProgressIndicator = document.getElementById('block-progress-indicator');
-  
+
   if (networkBlock > 0 && progressBar && currentBlockProgress) {
     // Calculate progress from start block to network block
     const totalBlocks = networkBlock - startBlock;
     const processedBlocks = Math.max(0, currentBlock - startBlock);
     const percentage = totalBlocks > 0 ? Math.min((processedBlocks / totalBlocks) * 100, 100) : 0;
-    
+
     progressBar.style.width = `${percentage}%`;
-    
+
     // Update block progress indicator
     if (blockProgressIndicator) {
       blockProgressIndicator.textContent = `${percentage.toFixed(1)}% (${processedBlocks.toLocaleString()} / ${totalBlocks.toLocaleString()})`;
     }
-    
+
     currentBlockProgress.textContent = `Block ${currentBlock.toLocaleString()}`;
-    
+
     // Update start block display
     if (startBlockProgress) {
       startBlockProgress.textContent = `Block ${startBlock.toLocaleString()}`;
-    }
-  }
-}
-
-// Update transaction progress bar (nested inside main bar)
-function updateTransactionProgressBar(txIndexed, txDeclared) {
-  const txProgressBar = document.getElementById("tx-progress-bar");
-  const txProgressIndicator = document.getElementById("tx-progress-indicator");
-  
-  if (txProgressBar && txProgressIndicator) {
-    const progressPercentage = txDeclared > 0 ? Math.min((txIndexed / txDeclared) * 100, 100) : 0;
-    
-    txProgressBar.style.width = `${progressPercentage}%`;
-    
-    // Update transaction progress indicator
-    txProgressIndicator.textContent = `${progressPercentage.toFixed(1)}% (${formatNumber(txIndexed)} / ${formatNumber(txDeclared)})`;
-    
-    // Change color based on progress
-    if (progressPercentage >= 95) {
-      txProgressBar.className = "bg-green-600 h-2 rounded-full transition-all duration-500 ease-out";
-    } else if (progressPercentage >= 80) {
-      txProgressBar.className = "bg-yellow-500 h-2 rounded-full transition-all duration-500 ease-out";
-    } else {
-      txProgressBar.className = "bg-gradient-to-r from-green-500 to-green-600 h-2 rounded-full transition-all duration-500 ease-out";
     }
   }
 }
@@ -964,11 +923,11 @@ function createTxsChart(blocks) {
   const labels = blocks.map((block) => `#${block.number}`);
   const txCtx = document.getElementById("txs-chart").getContext("2d");
   const txData = blocks.map((block) => block.transaction_count);
-  
+
   // If no transactions, show gas usage as percentage
   const hasTransactions = txData.some(value => value > 0);
   let chartData, chartLabel, chartColor;
-  
+
   if (hasTransactions) {
     chartData = txData;
     chartLabel = "Transaction Count";
@@ -1039,19 +998,19 @@ function createTxsChart(blocks) {
         },
         tooltip: {
           callbacks: {
-            title: function(context) {
+            title: function (context) {
               const blockIndex = context[0].dataIndex;
               const blocks = this.chart.blockData || [];
               return blocks[blockIndex] ? `Block #${blocks[blockIndex].number}` : '';
             },
-            label: function(context) {
+            label: function (context) {
               const blockIndex = context.dataIndex;
               const blocks = this.chart.blockData || [];
               const block = blocks[blockIndex];
               const hasTransactions = this.chart.hasTransactions;
-              
+
               if (!block) return `${context.dataset.label}: ${context.parsed.y.toLocaleString()}`;
-              
+
               if (hasTransactions) {
                 return `Transactions: ${block.transaction_count}`;
               } else {
@@ -1068,7 +1027,7 @@ function createTxsChart(blocks) {
       }
     },
   });
-  
+
   // Store block data for tooltips
   txsChart.blockData = blocks;
   txsChart.hasTransactions = hasTransactions;
@@ -1090,16 +1049,16 @@ function handleSearchKeyPress(e) {
 async function loadRecentBlocksDelta() {
   try {
     const response = await fetch(`${API_BASE}/blocks/since?since=${lastBlockNumber}`);
-    
+
     if (!response.ok) {
       throw new Error(`API returned ${response.status}`);
     }
-    
+
     const data = await response.json();
 
     if (data.blocks && data.blocks.length > 0) {
       const blocksList = document.getElementById("recent-blocks");
-      
+
       // Update lastBlockNumber to the highest block number received
       if (data.blocks.length > 0) {
         lastBlockNumber = Math.max(...data.blocks.map(b => b.number));
@@ -1123,12 +1082,12 @@ async function loadRecentBlocksDelta() {
 
       // Insert new rows at the beginning and remove excess rows from the end
       const maxRows = 5;
-      
+
       // Insert new rows at the beginning
       for (let i = newRows.length - 1; i >= 0; i--) {
         blocksList.insertBefore(newRows[i], blocksList.firstChild);
       }
-      
+
       // Remove excess rows from the end to maintain max 5 rows
       while (blocksList.children.length > maxRows) {
         blocksList.removeChild(blocksList.lastChild);
@@ -1136,20 +1095,22 @@ async function loadRecentBlocksDelta() {
 
       // Update charts with new blocks if charts exist and we have new data
       if (data.blocks.length > 0 && gasChart && txsChart) {
-        // Get current chart data and add new blocks
+        // Get current chart data (in chronological order - oldest first)
         const currentBlockData = gasChart.blockData || [];
-        
-        // Add new blocks to the beginning (most recent first)
-        // data.blocks comes in descending order (newest first), so we use it as-is
-        const updatedBlockData = [...data.blocks, ...currentBlockData];
-        
-        // Keep only the 5 most recent blocks
-        const chartBlockData = updatedBlockData.slice(0, 5);
-        
-        // Charts need blocks in chronological order (oldest first)
-        // Since chartBlockData is in descending order, we need to reverse it
-        createGasChart([...chartBlockData].reverse());
-        createTxsChart([...chartBlockData].reverse());
+
+        // data.blocks comes in descending order (newest first) from API
+        // We need to reverse it first to get chronological order
+        const newBlocksChronological = [...data.blocks].reverse();
+
+        // Combine new blocks (chronological) with existing blocks (chronological)
+        const updatedBlockData = [...currentBlockData, ...newBlocksChronological];
+
+        // Keep only the 5 most recent blocks (take from the end since they're in chronological order)
+        const chartBlockData = updatedBlockData.slice(-5);
+
+        // Charts need blocks in chronological order (oldest first) - which we already have
+        createGasChart(chartBlockData);
+        createTxsChart(chartBlockData);
       }
     } else if (lastBlockNumber === 0) {
       // First load - get initial data
@@ -1183,20 +1144,24 @@ async function loadRecentBlocksDelta() {
 // Load recent transactions using delta updates (optimized)
 async function loadRecentTransactionsDelta() {
   try {
+    console.log('Fetching transactions since:', lastTransactionHash);
     const response = await fetch(`${API_BASE}/transactions/since?since=${encodeURIComponent(lastTransactionHash)}`);
-    
+
     if (!response.ok) {
       throw new Error(`API returned ${response.status}`);
     }
-    
+
     const data = await response.json();
+    console.log('Transactions delta response:', data.transactions?.length || 0, 'transactions');
 
     if (data.transactions && data.transactions.length > 0) {
       const txsList = document.getElementById("recent-txs");
-      
+
       // Update lastTransactionHash to the most recent transaction
       if (data.transactions.length > 0) {
+        const oldHash = lastTransactionHash;
         lastTransactionHash = data.transactions[0].hash;
+        console.log('Updated lastTransactionHash from', oldHash.substring(0, 10) + '...', 'to', lastTransactionHash.substring(0, 10) + '...');
       }
 
       // Create new rows for the new transactions
@@ -1212,10 +1177,10 @@ async function loadRecentTransactionsDelta() {
             <a href="/accounts.html?address=${tx.from_address}" class="hash-link">${truncateHash(tx.from_address)}</a>
           </td>
           <td class="px-3 py-4 whitespace-nowrap text-sm font-mono truncate">
-            ${tx.to_address 
-              ? `<a href="/accounts.html?address=${tx.to_address}" class="hash-link">${truncateHash(tx.to_address)}</a>`
-              : '<span class="text-gray-500 text-sm">Contract Creation</span>'
-            }
+            ${tx.to_address
+            ? `<a href="/accounts.html?address=${tx.to_address}" class="hash-link">${truncateHash(tx.to_address)}</a>`
+            : '<span class="text-gray-500 text-sm">Contract Creation</span>'
+          }
           </td>
           <td class="px-3 py-4 whitespace-nowrap text-sm font-mono text-right">${formatEth(tx.value)}</td>
         `;
@@ -1224,12 +1189,12 @@ async function loadRecentTransactionsDelta() {
 
       // Insert new rows at the beginning and remove excess rows from the end
       const maxRows = 5;
-      
+
       // Insert new rows at the beginning
       for (let i = newRows.length - 1; i >= 0; i--) {
         txsList.insertBefore(newRows[i], txsList.firstChild);
       }
-      
+
       // Remove excess rows from the end to maintain max 5 rows
       while (txsList.children.length > maxRows) {
         txsList.removeChild(txsList.lastChild);

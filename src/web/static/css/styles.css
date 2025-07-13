@@ -31,8 +31,15 @@ body {
 }
 
 @keyframes fadeIn {
-  from { opacity: 0; transform: translateY(5px); }
-  to { opacity: 1; transform: translateY(0); }
+  from {
+    opacity: 0;
+    transform: translateY(5px);
+  }
+
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
 }
 
 .stat-value {
@@ -46,13 +53,15 @@ body {
 
 /* Table container with fixed height to prevent scroll flicker */
 .table-container {
-  min-height: 280px; /* Altura mínima para 5 linhas de dados */
+  min-height: 280px;
+  /* Altura mínima para 5 linhas de dados */
   overflow: hidden;
 }
 
 /* Table body with minimum height during updates */
 .table-body-container {
-  min-height: 200px; /* Altura para manter espaço durante atualizações */
+  min-height: 200px;
+  /* Altura para manter espaço durante atualizações */
   transition: opacity 0.2s ease;
 }
 
@@ -62,7 +71,7 @@ body {
 }
 
 /* Prevent layout shifts during table updates */
-.recent-blocks-table, 
+.recent-blocks-table,
 .recent-txs-table {
   table-layout: fixed;
   width: 100%;

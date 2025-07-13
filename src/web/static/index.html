@@ -77,16 +77,20 @@
           class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6 mb-8"
           id="stats-container"
         >
+          <!-- Latest Network Block -->
           <div class="bg-white rounded-lg shadow-md p-6 stat-card">
             <div class="flex items-center justify-between">
               <div>
-                <p class="text-sm font-medium text-gray-500">Latest Block</p>
+                <p class="text-sm font-medium text-gray-500">
+                  Latest Network Block
+                </p>
                 <p
                   class="text-2xl font-bold text-gray-900 stat-value"
-                  id="latest-block"
+                  id="latest-network-block"
                 >
                   ...
                 </p>
+                <p class="text-xs text-gray-400 mt-1">Blockchain tip</p>
               </div>
               <div class="bg-blue-100 p-3 rounded-full">
                 <svg
@@ -106,18 +110,55 @@
               </div>
             </div>
           </div>
+
+          <!-- Latest Indexed Block -->
           <div class="bg-white rounded-lg shadow-md p-6 stat-card">
             <div class="flex items-center justify-between">
               <div>
                 <p class="text-sm font-medium text-gray-500">
-                  Total Transactions
+                  Latest Indexed Block
                 </p>
                 <p
                   class="text-2xl font-bold text-gray-900 stat-value"
-                  id="total-txs"
+                  id="latest-indexed-block"
                 >
                   ...
                 </p>
+                <p class="text-xs text-gray-400 mt-1">Our indexer</p>
+              </div>
+              <div class="bg-indigo-100 p-3 rounded-full">
+                <svg
+                  xmlns="http://www.w3.org/2000/svg"
+                  class="h-6 w-6 text-indigo-600"
+                  fill="none"
+                  viewBox="0 0 24 24"
+                  stroke="currentColor"
+                >
+                  <path
+                    stroke-linecap="round"
+                    stroke-linejoin="round"
+                    stroke-width="2"
+                    d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z"
+                  />
+                </svg>
+              </div>
+            </div>
+          </div>
+
+          <!-- Total Network Transactions -->
+          <div class="bg-white rounded-lg shadow-md p-6 stat-card">
+            <div class="flex items-center justify-between">
+              <div>
+                <p class="text-sm font-medium text-gray-500">
+                  Total Network Transactions
+                </p>
+                <p
+                  class="text-2xl font-bold text-gray-900 stat-value"
+                  id="total-network-txs"
+                >
+                  ...
+                </p>
+                <p class="text-xs text-gray-400 mt-1">Estimated total</p>
               </div>
               <div class="bg-green-100 p-3 rounded-full">
                 <svg
@@ -137,16 +178,92 @@
               </div>
             </div>
           </div>
+
+          <!-- Total Indexed Transactions -->
           <div class="bg-white rounded-lg shadow-md p-6 stat-card">
             <div class="flex items-center justify-between">
               <div>
-                <p class="text-sm font-medium text-gray-500">Total Accounts</p>
+                <p class="text-sm font-medium text-gray-500">
+                  Indexed Transactions
+                </p>
                 <p
                   class="text-2xl font-bold text-gray-900 stat-value"
-                  id="total-accounts"
+                  id="total-indexed-txs"
                 >
                   ...
                 </p>
+                <p class="text-xs text-gray-400 mt-1">From start block</p>
+              </div>
+              <div class="bg-emerald-100 p-3 rounded-full">
+                <svg
+                  xmlns="http://www.w3.org/2000/svg"
+                  class="h-6 w-6 text-emerald-600"
+                  fill="none"
+                  viewBox="0 0 24 24"
+                  stroke="currentColor"
+                >
+                  <path
+                    stroke-linecap="round"
+                    stroke-linejoin="round"
+                    stroke-width="2"
+                    d="M4 7v10c0 2.21 3.582 4 8 4s8-1.79 8-4V7M4 7c0 2.21 3.582 4 8 4s8-1.79 8-4M4 7c0-2.21 3.582-4 8-4s8 1.79 8 4"
+                  />
+                </svg>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <!-- Second Stats Row -->
+        <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6 mb-8">
+          <!-- Total Blockchain Transactions -->
+          <div class="bg-white rounded-lg shadow-md p-6 stat-card">
+            <div class="flex items-center justify-between">
+              <div>
+                <p class="text-sm font-medium text-gray-500">
+                  Total Blockchain Transactions
+                </p>
+                <p
+                  class="text-2xl font-bold text-gray-900 stat-value"
+                  id="total-blockchain-txs"
+                >
+                  ...
+                </p>
+                <p class="text-xs text-gray-400 mt-1">Historical + Indexed</p>
+              </div>
+              <div class="bg-teal-100 p-3 rounded-full">
+                <svg
+                  xmlns="http://www.w3.org/2000/svg"
+                  class="h-6 w-6 text-teal-600"
+                  fill="none"
+                  viewBox="0 0 24 24"
+                  stroke="currentColor"
+                >
+                  <path
+                    stroke-linecap="round"
+                    stroke-linejoin="round"
+                    stroke-width="2"
+                    d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z"
+                  />
+                </svg>
+              </div>
+            </div>
+          </div>
+
+          <!-- Total Network Accounts -->
+          <div class="bg-white rounded-lg shadow-md p-6 stat-card">
+            <div class="flex items-center justify-between">
+              <div>
+                <p class="text-sm font-medium text-gray-500">
+                  Total Network Accounts
+                </p>
+                <p
+                  class="text-2xl font-bold text-gray-900 stat-value"
+                  id="total-network-accounts"
+                >
+                  ...
+                </p>
+                <p class="text-xs text-gray-400 mt-1">From Etherscan</p>
               </div>
               <div class="bg-purple-100 p-3 rounded-full">
                 <svg
@@ -166,6 +283,42 @@
               </div>
             </div>
           </div>
+
+          <!-- Total Indexed Accounts -->
+          <div class="bg-white rounded-lg shadow-md p-6 stat-card">
+            <div class="flex items-center justify-between">
+              <div>
+                <p class="text-sm font-medium text-gray-500">
+                  Total Indexed Accounts
+                </p>
+                <p
+                  class="text-2xl font-bold text-gray-900 stat-value"
+                  id="total-indexed-accounts"
+                >
+                  ...
+                </p>
+                <p class="text-xs text-gray-400 mt-1">Our database</p>
+              </div>
+              <div class="bg-violet-100 p-3 rounded-full">
+                <svg
+                  xmlns="http://www.w3.org/2000/svg"
+                  class="h-6 w-6 text-violet-600"
+                  fill="none"
+                  viewBox="0 0 24 24"
+                  stroke="currentColor"
+                >
+                  <path
+                    stroke-linecap="round"
+                    stroke-linejoin="round"
+                    stroke-width="2"
+                    d="M17 20h5v-2a3 3 0 00-5.356-1.857M17 20H7m10 0v-2c0-.656-.126-1.283-.356-1.857M7 20H2v-2a3 3 0 015.356-1.857M7 20v-2c0-.656.126-1.283.356-1.857m0 0a5.002 5.002 0 019.288 0M15 7a3 3 0 11-6 0 3 3 0 016 0zm6 3a2 2 0 11-4 0 2 2 0 014 0zM7 10a2 2 0 11-4 0 2 2 0 014 0z"
+                  />
+                </svg>
+              </div>
+            </div>
+          </div>
+
+          <!-- Sync Status -->
           <div class="bg-white rounded-lg shadow-md p-6 stat-card">
             <div class="flex items-center justify-between">
               <div>
@@ -176,6 +329,7 @@
                 >
                   ...
                 </p>
+                <p class="text-xs text-gray-400 mt-1">Indexer state</p>
               </div>
               <div id="status-icon" class="bg-yellow-100 p-3 rounded-full">
                 <svg
@@ -211,37 +365,18 @@
                 <span class="font-medium">Blocks:</span>
                 <span id="block-progress-indicator">0% (0 / 0)</span>
               </div>
-              <div
-                class="font-mono"
-                style="min-width: 140px; text-align: right"
-              >
-                <span class="font-medium">Current Txs:</span>
-                <span id="tx-progress-indicator">0% (0 / 0)</span>
-              </div>
             </div>
           </div>
 
-          <!-- Combined Progress Bar with Nested Indicators -->
+          <!-- Block Progress Bar -->
           <div
             class="relative w-full bg-gray-200 rounded-full h-5 mb-3 overflow-hidden"
           >
-            <!-- Block Progress (Background Layer) -->
             <div
               class="absolute inset-0 bg-gradient-to-r from-blue-500 to-blue-600 rounded-full transition-all duration-500 ease-out"
               style="width: 0%"
               id="progress-bar"
             ></div>
-
-            <!-- Transaction Progress (Overlay Layer) - Made thinner -->
-            <div
-              class="absolute top-1.5 left-1 right-1 bg-gray-300 rounded-full h-2 overflow-hidden"
-            >
-              <div
-                class="bg-gradient-to-r from-green-500 to-green-600 h-2 rounded-full transition-all duration-500 ease-out"
-                style="width: 0%"
-                id="tx-progress-bar"
-              ></div>
-            </div>
           </div>
 
           <div class="flex justify-between text-xs text-gray-500">

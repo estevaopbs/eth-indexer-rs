@@ -229,6 +229,8 @@ pub struct IndexerStats {
     pub total_transactions: i64,
     pub total_transactions_declared: i64,
     pub total_transactions_indexed: i64,
+    pub real_transactions_indexed: i64,  // Only transactions from start_block onwards
+    pub total_blockchain_transactions: i64, // Historical + indexed transactions
     pub total_accounts: i64,
     pub indexer_status: String,
     pub sync_percentage: f64,

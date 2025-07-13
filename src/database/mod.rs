@@ -241,6 +241,105 @@ impl DatabaseService {
         Ok(())
     }
 
+    /// Insert multiple transactions in a single batch for better performance
+    pub async fn insert_transactions_batch(&self, transactions: &[Transaction]) -> Result<()> {
+        if transactions.is_empty() {
+            return Ok(());
+        }
+
+        let mut query_builder = sqlx::QueryBuilder::new(
+            "INSERT INTO transactions (hash, block_number, transaction_index, from_address, to_address, value, gas_used, gas_price, status) "
+        );
+
+        query_builder.push_values(transactions, |mut b, tx| {
+            b.push_bind(&tx.hash)
+                .push_bind(tx.block_number)
+                .push_bind(tx.transaction_index)
+                .push_bind(&tx.from_address)
+                .push_bind(&tx.to_address)
+                .push_bind(&tx.value)
+                .push_bind(tx.gas_used)
+                .push_bind(&tx.gas_price)
+                .push_bind(tx.status);
+        });
+
+        query_builder.build().execute(&self.pool).await?;
+        Ok(())
+    }
+
+    /// Insert multiple logs in a single batch for better performance
+    pub async fn insert_logs_batch(&self, logs: &[Log]) -> Result<()> {
+        if logs.is_empty() {
+            return Ok(());
+        }
+
+        let mut query_builder = sqlx::QueryBuilder::new(
+            "INSERT INTO logs (transaction_hash, log_index, address, topic0, topic1, topic2, topic3, data, block_number) "
+        );
+
+        query_builder.push_values(logs, |mut b, log| {
+            b.push_bind(&log.transaction_hash)
+                .push_bind(log.log_index)
+                .push_bind(&log.address)
+                .push_bind(&log.topic0)
+                .push_bind(&log.topic1)
+                .push_bind(&log.topic2)
+                .push_bind(&log.topic3)
+                .push_bind(&log.data)
+                .push_bind(log.block_number);
+        });
+
+        query_builder.build().execute(&self.pool).await?;
+        Ok(())
+    }
+
+    /// Insert multiple token transfers in a single batch for better performance
+    pub async fn insert_token_transfers_batch(&self, transfers: &[TokenTransfer]) -> Result<()> {
+        if transfers.is_empty() {
+            return Ok(());
+        }
+
+        let mut query_builder = sqlx::QueryBuilder::new(
+            "INSERT INTO token_transfers (transaction_hash, token_address, from_address, to_address, amount, block_number, token_type, token_id) "
+        );
+
+        query_builder.push_values(transfers, |mut b, transfer| {
+            b.push_bind(&transfer.transaction_hash)
+                .push_bind(&transfer.token_address)
+                .push_bind(&transfer.from_address)
+                .push_bind(&transfer.to_address)
+                .push_bind(&transfer.amount)
+                .push_bind(transfer.block_number)
+                .push_bind(&transfer.token_type)
+                .push_bind(&transfer.token_id);
+        });
+
+        query_builder.build().execute(&self.pool).await?;
+        Ok(())
+    }
+
+    /// Insert multiple accounts in a single batch for better performance
+    pub async fn insert_accounts_batch(&self, accounts: &[Account]) -> Result<()> {
+        if accounts.is_empty() {
+            return Ok(());
+        }
+
+        let mut query_builder = sqlx::QueryBuilder::new(
+            "INSERT OR IGNORE INTO accounts (address, balance, transaction_count, first_seen_block, last_seen_block) "
+        );
+
+        query_builder.push_values(accounts, |mut b, account| {
+            b.push_bind(&account.address)
+                .push_bind(&account.balance)
+                .push_bind(account.transaction_count)
+                .push_bind(account.first_seen_block)
+                .push_bind(account.last_seen_block);
+        });
+
+        query_builder.build().execute(&self.pool).await?;
+        Ok(())
+    }
+
     /// Get the latest block number
     pub async fn get_latest_block_number(&self) -> Result<Option<i64>> {
         let result: (Option<i64>,) = sqlx::query_as("SELECT MAX(number) FROM blocks")
@@ -389,7 +488,7 @@ impl DatabaseService {
             r#"
             SELECT hash, block_number, from_address, to_address, value, gas_used, gas_price, status, transaction_index
             FROM transactions
-            ORDER BY block_number DESC, transaction_index
+            ORDER BY block_number DESC, transaction_index DESC
             LIMIT ? OFFSET ?
             "#,
         )
@@ -559,5 +658,53 @@ impl DatabaseService {
         .context("Failed to get closest cached historical count")?;
 
         Ok(result)
+    }
+
+    /// Get a configuration value from the database
+    pub async fn get_config(&self, key: &str) -> Result<Option<String>> {
+        let result = sqlx::query_as::<_, (String,)>("SELECT value FROM config WHERE key = ?")
+            .bind(key)
+            .fetch_optional(&self.pool)
+            .await
+            .context("Failed to get config value")?;
+
+        Ok(result.map(|(value,)| value))
+    }
+
+    /// Set a configuration value in the database
+    pub async fn set_config(&self, key: &str, value: &str) -> Result<()> {
+        sqlx::query(
+            r#"
+            INSERT INTO config (key, value) 
+            VALUES (?, ?)
+            ON CONFLICT(key) DO UPDATE SET 
+                value = excluded.value,
+                updated_at = CURRENT_TIMESTAMP
+            "#,
+        )
+        .bind(key)
+        .bind(value)
+        .execute(&self.pool)
+        .await
+        .context("Failed to set config value")?;
+
+        Ok(())
+    }
+
+    /// Get the start block from database configuration
+    pub async fn get_start_block(&self) -> Result<Option<u64>> {
+        if let Some(value_str) = self.get_config("start_block").await? {
+            if value_str != "0" {
+                let start_block = value_str.parse::<u64>()
+                    .context("Failed to parse start_block from database")?;
+                return Ok(Some(start_block));
+            }
+        }
+        Ok(None)
+    }
+
+    /// Set the start block in database configuration
+    pub async fn set_start_block(&self, start_block: u64) -> Result<()> {
+        self.set_config("start_block", &start_block.to_string()).await
     }
 }

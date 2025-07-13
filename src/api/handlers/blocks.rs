@@ -158,20 +158,37 @@ pub async fn get_transactions_since(
             r#"
             SELECT hash, block_number, from_address, to_address, value, gas_used, gas_price, status, transaction_index
             FROM transactions
-            WHERE (block_number > (SELECT block_number FROM transactions WHERE hash = ? LIMIT 1))
-               OR (block_number = (SELECT block_number FROM transactions WHERE hash = ? LIMIT 1) 
-                   AND transaction_index > (SELECT transaction_index FROM transactions WHERE hash = ? LIMIT 1))
-            ORDER BY block_number DESC, transaction_index DESC
-            LIMIT 5
+            WHERE hash = ?
             "#,
         )
         .bind(&since_hash)
-        .bind(&since_hash)
-        .bind(&since_hash)
-        .fetch_all(&db.pool)
+        .fetch_optional(&db.pool)
         .await {
-            Ok(txs) => txs,
-            Err(_) => vec![]
+            Ok(Some(ref_tx)) => {
+                // Found reference transaction, get newer ones
+                match sqlx::query_as::<_, crate::database::Transaction>(
+                    r#"
+                    SELECT hash, block_number, from_address, to_address, value, gas_used, gas_price, status, transaction_index
+                    FROM transactions
+                    WHERE (block_number > ?)
+                       OR (block_number = ? AND transaction_index > ?)
+                    ORDER BY block_number DESC, transaction_index DESC
+                    LIMIT 5
+                    "#,
+                )
+                .bind(ref_tx.block_number)
+                .bind(ref_tx.block_number)
+                .bind(ref_tx.transaction_index)
+                .fetch_all(&db.pool)
+                .await {
+                    Ok(txs) => txs,
+                    Err(_) => vec![]
+                }
+            }
+            _ => {
+                // Hash not found, return empty result
+                vec![]
+            }
         }
     };
 

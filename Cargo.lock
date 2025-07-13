@@ -1145,6 +1145,7 @@ dependencies = [
  "gcp_auth",
  "hex",
  "mockall",
+ "regex",
  "reqwest",
  "rfc6979",
  "rusqlite",
