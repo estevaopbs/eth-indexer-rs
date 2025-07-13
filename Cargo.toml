@@ -1,0 +1,65 @@
+[package]
+name = "eth-indexer-rs"
+version = "0.1.0"
+edition = "2021"
+description = "A blockchain indexer for Ethereum-like chains"
+authors = ["ETH Indexer RS Team"]
+
+[dependencies]
+# Async runtime
+tokio = { version = "1.28", features = ["full"] }
+
+# Web framework
+axum = "0.6.18"
+tower-http = { version = "0.4.0", features = ["cors", "trace", "fs"] }
+tower = "0.4.13"
+
+# Ethereum interaction
+web3 = "0.18.0"
+ethers = { version = "2.0.14", features = ["legacy", "ws", "ipc"] }
+ethers-providers = "2.0.14"
+ethers-core = "2.0.14"
+
+# HTTP client for Beacon API
+reqwest = { version = "0.11", features = ["json"] }
+
+# Google Cloud authentication
+gcp_auth = "0.8"
+base64 = "0.21"
+
+# Explicitly pin crypto dependencies that might use base64ct
+base64ct = "=1.6.0"
+rfc6979 = "=0.4.0"
+signature = "=2.1.0"
+
+# Database
+sqlx = { version = "0.7.2", features = [
+    "runtime-tokio-rustls",
+    "sqlite",
+    "migrate",
+    "json",
+    "chrono",
+] }
+rusqlite = { version = "0.29.0", features = ["bundled"] }
+
+# Utilities
+serde = { version = "1.0", features = ["derive"] }
+serde_json = "1.0"
+dotenvy = "0.15"
+config = { version = "0.13.3", features = ["toml"] }
+tracing = "0.1"
+tracing-subscriber = { version = "0.3", features = ["env-filter"] }
+chrono = { version = "0.4", features = ["serde"] }
+thiserror = "1.0"
+anyhow = "1.0"
+futures = "0.3"
+hex = "0.4"
+
+# CLI
+clap = { version = "4.4", features = ["derive", "env"] }
+
+[dev-dependencies]
+tokio-test = "0.4"
+assert_fs = "1.0"
+mockall = "0.11"
+tempfile = "3.8"

@@ -1,0 +1,388 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>ETH Indexer RS</title>
+    <link
+      href="https://cdn.jsdelivr.net/npm/tailwindcss@2.2.19/dist/tailwind.min.css"
+      rel="stylesheet"
+    />
+    <link rel="stylesheet" href="/css/styles.css" />
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+  </head>
+  <body>
+    <div class="min-h-screen">
+      <!-- Navigation -->
+      <nav class="bg-gray-800 text-white shadow-lg">
+        <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+          <div class="flex items-center justify-between h-16">
+            <div class="flex items-center">
+              <div class="flex-shrink-0">
+                <h1 class="text-xl font-bold">ETH Indexer RS</h1>
+              </div>
+              <div class="hidden md:block">
+                <div class="ml-10 flex items-baseline space-x-4">
+                  <a
+                    href="/"
+                    class="px-3 py-2 rounded-md text-sm font-medium text-white bg-gray-900"
+                    >Dashboard</a
+                  >
+                  <a
+                    href="/blocks.html"
+                    class="px-3 py-2 rounded-md text-sm font-medium text-gray-300 hover:text-white hover:bg-gray-700"
+                    >Blocks</a
+                  >
+                  <a
+                    href="/transactions.html"
+                    class="px-3 py-2 rounded-md text-sm font-medium text-gray-300 hover:text-white hover:bg-gray-700"
+                    >Transactions</a
+                  >
+                  <a
+                    href="/accounts.html"
+                    class="px-3 py-2 rounded-md text-sm font-medium text-gray-300 hover:text-white hover:bg-gray-700"
+                    >Accounts</a
+                  >
+                </div>
+              </div>
+            </div>
+            <div class="flex items-center space-x-4">
+              <!-- Search -->
+              <div class="relative">
+                <input
+                  type="text"
+                  id="search-input"
+                  onkeypress="handleSearchKeyPress(event)"
+                  placeholder="Search by block, tx hash, or address..."
+                  class="w-64 px-3 py-2 border border-gray-300 rounded-md text-gray-900 placeholder-gray-500 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                />
+              </div>
+            </div>
+          </div>
+        </div>
+      </nav>
+
+      <!-- Main Content -->
+      <main class="max-w-7xl mx-auto py-6 px-4 sm:px-6 lg:px-8">
+        <!-- Page Header -->
+        <div class="mb-8">
+          <h2 class="text-3xl font-bold text-gray-900">Dashboard</h2>
+          <p class="mt-2 text-gray-600">
+            Real-time Ethereum blockchain indexing status and statistics
+          </p>
+        </div>
+
+        <!-- Stats Grid -->
+        <div
+          class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6 mb-8"
+          id="stats-container"
+        >
+          <div class="bg-white rounded-lg shadow-md p-6 stat-card">
+            <div class="flex items-center justify-between">
+              <div>
+                <p class="text-sm font-medium text-gray-500">Latest Block</p>
+                <p
+                  class="text-2xl font-bold text-gray-900 stat-value"
+                  id="latest-block"
+                >
+                  ...
+                </p>
+              </div>
+              <div class="bg-blue-100 p-3 rounded-full">
+                <svg
+                  xmlns="http://www.w3.org/2000/svg"
+                  class="h-6 w-6 text-blue-600"
+                  fill="none"
+                  viewBox="0 0 24 24"
+                  stroke="currentColor"
+                >
+                  <path
+                    stroke-linecap="round"
+                    stroke-linejoin="round"
+                    stroke-width="2"
+                    d="M19 11H5m14 0a2 2 0 012 2v6a2 2 0 01-2 2H5a2 2 0 01-2-2v-6a2 2 0 012-2m14 0V9a2 2 0 00-2-2M5 11V9a2 2 0 012-2m0 0V5a2 2 0 012-2h6a2 2 0 012 2v2M7 7h10"
+                  />
+                </svg>
+              </div>
+            </div>
+          </div>
+          <div class="bg-white rounded-lg shadow-md p-6 stat-card">
+            <div class="flex items-center justify-between">
+              <div class="flex-1">
+                <p class="text-sm font-medium text-gray-500">
+                  Total Transactions
+                </p>
+                <p
+                  class="text-2xl font-bold text-gray-900 stat-value"
+                  id="total-txs"
+                >
+                  ...
+                </p>
+                <div class="mt-2">
+                  <p class="text-xs text-gray-400">
+                    Indexed:
+                    <span id="tx-indexed" class="text-gray-700">...</span> /
+                    Declared:
+                    <span id="tx-declared" class="text-gray-700">...</span>
+                  </p>
+                  <div class="mt-1 w-full bg-gray-200 rounded-full h-1.5">
+                    <div
+                      id="tx-progress-bar"
+                      class="bg-blue-600 h-1.5 rounded-full transition-all duration-500"
+                      style="width: 0%"
+                    ></div>
+                  </div>
+                  <p class="text-xs text-gray-400 mt-1">
+                    <span id="tx-progress-text">0%</span> processing complete
+                  </p>
+                </div>
+              </div>
+              <div class="bg-green-100 p-3 rounded-full">
+                <svg
+                  xmlns="http://www.w3.org/2000/svg"
+                  class="h-6 w-6 text-green-600"
+                  fill="none"
+                  viewBox="0 0 24 24"
+                  stroke="currentColor"
+                >
+                  <path
+                    stroke-linecap="round"
+                    stroke-linejoin="round"
+                    stroke-width="2"
+                    d="M8 7h12m0 0l-4-4m4 4l-4 4m0 6H4m0 0l4 4m-4-4l4-4"
+                  />
+                </svg>
+              </div>
+            </div>
+          </div>
+          <div class="bg-white rounded-lg shadow-md p-6 stat-card">
+            <div class="flex items-center justify-between">
+              <div>
+                <p class="text-sm font-medium text-gray-500">Total Accounts</p>
+                <p
+                  class="text-2xl font-bold text-gray-900 stat-value"
+                  id="total-accounts"
+                >
+                  ...
+                </p>
+              </div>
+              <div class="bg-purple-100 p-3 rounded-full">
+                <svg
+                  xmlns="http://www.w3.org/2000/svg"
+                  class="h-6 w-6 text-purple-600"
+                  fill="none"
+                  viewBox="0 0 24 24"
+                  stroke="currentColor"
+                >
+                  <path
+                    stroke-linecap="round"
+                    stroke-linejoin="round"
+                    stroke-width="2"
+                    d="M12 4.354a4 4 0 110 5.292M15 21H3v-1a6 6 0 0112 0v1zm0 0h6v-1a6 6 0 00-9-5.197M13 7a4 4 0 11-8 0 4 4 0 018 0z"
+                  />
+                </svg>
+              </div>
+            </div>
+          </div>
+          <div class="bg-white rounded-lg shadow-md p-6 stat-card">
+            <div class="flex items-center justify-between">
+              <div>
+                <p class="text-sm font-medium text-gray-500">Sync Status</p>
+                <div class="flex items-center">
+                  <p
+                    class="text-2xl font-bold text-gray-900 mr-2 stat-value"
+                    id="sync-status"
+                  >
+                    ...
+                  </p>
+                  <span
+                    class="text-sm text-gray-600"
+                    id="sync-percentage"
+                  ></span>
+                </div>
+              </div>
+              <div id="status-icon" class="bg-yellow-100 p-3 rounded-full">
+                <svg
+                  xmlns="http://www.w3.org/2000/svg"
+                  class="h-6 w-6 text-yellow-600"
+                  fill="none"
+                  viewBox="0 0 24 24"
+                  stroke="currentColor"
+                >
+                  <path
+                    stroke-linecap="round"
+                    stroke-linejoin="round"
+                    stroke-width="2"
+                    d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"
+                  />
+                </svg>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <!-- Progress Bar Section -->
+        <div class="mt-10 bg-white p-6 rounded-lg shadow-md">
+          <div class="flex items-center justify-between mb-4">
+            <h3 class="text-lg font-medium text-gray-900">Indexing Progress</h3>
+            <span class="text-sm text-gray-500" id="progress-text"
+              >Initializing...</span
+            >
+          </div>
+          <div class="w-full bg-gray-200 rounded-full h-4 mb-2">
+            <div
+              class="bg-gradient-to-r from-blue-500 to-blue-600 h-4 rounded-full transition-all duration-500 ease-out"
+              style="width: 0%"
+              id="progress-bar"
+            ></div>
+          </div>
+          <div class="flex justify-between text-xs text-gray-500 mt-2">
+            <span>Block 0</span>
+            <span id="current-block-progress">Block ...</span>
+            <span>Latest Network Block</span>
+          </div>
+        </div>
+
+        <!-- Charts Row -->
+        <div class="mt-10 grid grid-cols-1 lg:grid-cols-2 gap-6">
+          <div class="bg-white p-6 rounded-lg shadow-md">
+            <h3 class="text-lg font-medium text-gray-900 mb-4">
+              Gas Usage Efficiency
+            </h3>
+            <div style="position: relative; height: 300px">
+              <canvas id="gas-chart"></canvas>
+            </div>
+          </div>
+          <div class="bg-white p-6 rounded-lg shadow-md">
+            <h3 class="text-lg font-medium text-gray-900 mb-4">
+              Transactions per Block
+            </h3>
+            <div style="position: relative; height: 300px">
+              <canvas id="txs-chart"></canvas>
+            </div>
+          </div>
+        </div>
+
+        <!-- Recent Data Sections -->
+        <div class="mt-10 grid grid-cols-1 lg:grid-cols-2 gap-6">
+          <!-- Recent Blocks -->
+          <div class="bg-white rounded-lg shadow-md overflow-hidden">
+            <div class="px-6 py-4 bg-gray-50 border-b border-gray-200">
+              <h3 class="text-lg font-medium text-gray-900">Recent Blocks</h3>
+            </div>
+            <div class="px-2 py-4">
+              <div class="overflow-x-auto table-container">
+                <table
+                  class="w-full divide-y divide-gray-200 recent-blocks-table"
+                  style="table-layout: fixed; width: 100%"
+                >
+                  <thead>
+                    <tr>
+                      <th
+                        class="px-3 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider"
+                        style="width: 20%"
+                      >
+                        Block
+                      </th>
+                      <th
+                        class="px-3 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider"
+                        style="width: 20%"
+                      >
+                        Transactions
+                      </th>
+                      <th
+                        class="px-3 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider"
+                        style="width: 25%"
+                      >
+                        Gas Used
+                      </th>
+                      <th
+                        class="px-3 py-3 text-right text-xs font-medium text-gray-500 uppercase tracking-wider"
+                        style="width: 35%"
+                      >
+                        Timestamp
+                      </th>
+                    </tr>
+                  </thead>
+                  <tbody
+                    id="recent-blocks"
+                    class="divide-y divide-gray-200 table-body-container"
+                  >
+                    <!-- Blocks will be loaded here -->
+                  </tbody>
+                </table>
+              </div>
+            </div>
+          </div>
+
+          <!-- Recent Transactions -->
+          <div class="bg-white rounded-lg shadow-md overflow-hidden">
+            <div class="px-6 py-4 bg-gray-50 border-b border-gray-200">
+              <h3 class="text-lg font-medium text-gray-900">
+                Recent Transactions
+              </h3>
+            </div>
+            <div class="px-2 py-4">
+              <div class="overflow-x-auto table-container">
+                <table
+                  class="w-full divide-y divide-gray-200 recent-txs-table"
+                  style="table-layout: fixed; width: 100%"
+                >
+                  <thead>
+                    <tr>
+                      <th
+                        class="px-3 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider"
+                        style="width: 28%"
+                      >
+                        Hash
+                      </th>
+                      <th
+                        class="px-3 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider"
+                        style="width: 28%"
+                      >
+                        From
+                      </th>
+                      <th
+                        class="px-3 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider"
+                        style="width: 28%"
+                      >
+                        To
+                      </th>
+                      <th
+                        class="px-3 py-3 text-right text-xs font-medium text-gray-500 uppercase tracking-wider"
+                        style="width: 16%"
+                      >
+                        Value
+                      </th>
+                    </tr>
+                  </thead>
+                  <tbody
+                    id="recent-txs"
+                    class="divide-y divide-gray-200 table-body-container"
+                  >
+                    <!-- Transactions will be loaded here -->
+                  </tbody>
+                </table>
+              </div>
+            </div>
+          </div>
+        </div>
+      </main>
+
+      <!-- Footer -->
+      <footer class="bg-white border-t border-gray-200 mt-auto">
+        <div class="max-w-7xl mx-auto py-6 px-4 sm:px-6 lg:px-8">
+          <div class="md:flex md:items-center md:justify-between">
+            <div class="mt-8 md:mt-0 md:order-1">
+              <p class="text-center text-base text-gray-500">
+                &copy; 2025 ETH Indexer RS. All rights reserved.
+              </p>
+            </div>
+          </div>
+        </div>
+      </footer>
+    </div>
+
+    <script src="/js/dashboard.js"></script>
+  </body>
+</html>
