@@ -121,8 +121,9 @@ body {
 .recent-txs-table th:nth-child(4),
 .recent-txs-table td:nth-child(4) {
   width: 20%;
-  min-width: 80px;
+  min-width: 90px;
   text-align: right;
+  white-space: nowrap;
 }
 
 /* Ensure hash links are properly truncated */

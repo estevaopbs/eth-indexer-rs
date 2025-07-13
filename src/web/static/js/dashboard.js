@@ -26,14 +26,14 @@ function truncateHash(hash, length = 10) {
 
 // Format ETH value
 function formatEth(value) {
-  if (!value) return "0 ETH";
+  if (!value) return "0";
   // Convert from wei to ETH
   const ethValue = Number(BigInt(value)) / Number(10 ** 18);
   
   // Format to 5 decimal places and remove trailing zeros
   const formatted = ethValue.toFixed(5).replace(/\.?0+$/, '');
   
-  return `${formatted} ETH`;
+  return formatted;
 }
 
 // Load all data without loading indicators (unified 1-second refresh)
@@ -86,6 +86,8 @@ async function initializeData() {
         lastBlockNumber = Math.max(...blocksData.blocks.map(b => b.number));
         
         // Initialize charts
+        // blocksData.blocks comes in descending order (newest first)
+        // Charts need chronological order (oldest first), so reverse
         createGasChart(blocksData.blocks.slice().reverse());
         createTxsChart(blocksData.blocks.slice().reverse());
       } else {
@@ -209,7 +211,7 @@ async function loadStats() {
     }
 
     // Update progress bar
-    updateProgressBar(data.latest_block, latestNetworkBlock);
+    updateProgressBar(data.latest_block, latestNetworkBlock, data.start_block || 0);
 
     // Update status icon color
     const statusIcon = document.getElementById("status-icon");
@@ -927,16 +929,29 @@ function createGasChart(blocks) {
 }
 
 // Update progress bar
-function updateProgressBar(currentBlock, networkBlock) {
+function updateProgressBar(currentBlock, networkBlock, startBlock = 0) {
   const progressBar = document.getElementById('progress-bar');
   const progressText = document.getElementById('progress-text');
   const currentBlockProgress = document.getElementById('current-block-progress');
+  const startBlockProgress = document.getElementById('start-block-progress');
   
   if (networkBlock > 0 && progressBar && progressText && currentBlockProgress) {
-    const percentage = Math.min((currentBlock / networkBlock) * 100, 100);
+    // Calculate progress from start block to network block
+    const totalBlocks = networkBlock - startBlock;
+    const processedBlocks = Math.max(0, currentBlock - startBlock);
+    const percentage = totalBlocks > 0 ? Math.min((processedBlocks / totalBlocks) * 100, 100) : 0;
+    
     progressBar.style.width = `${percentage}%`;
-    progressText.textContent = `${percentage.toFixed(3)}% (${currentBlock.toLocaleString()} / ${networkBlock.toLocaleString()})`;
+    
+    // Show simplified format: percentage (processed / total)
+    progressText.textContent = `${percentage.toFixed(3)}% (${processedBlocks.toLocaleString()} / ${totalBlocks.toLocaleString()})`;
+    
     currentBlockProgress.textContent = `Block ${currentBlock.toLocaleString()}`;
+    
+    // Update start block display
+    if (startBlockProgress) {
+      startBlockProgress.textContent = `Block ${startBlock.toLocaleString()}`;
+    }
   }
 }
 
@@ -1123,14 +1138,16 @@ async function loadRecentBlocksDelta() {
         const currentBlockData = gasChart.blockData || [];
         
         // Add new blocks to the beginning (most recent first)
-        const updatedBlockData = [...data.blocks.reverse(), ...currentBlockData];
+        // data.blocks comes in descending order (newest first), so we use it as-is
+        const updatedBlockData = [...data.blocks, ...currentBlockData];
         
         // Keep only the 5 most recent blocks
         const chartBlockData = updatedBlockData.slice(0, 5);
         
         // Charts need blocks in chronological order (oldest first)
-        createGasChart(chartBlockData.slice().reverse());
-        createTxsChart(chartBlockData.slice().reverse());
+        // Since chartBlockData is in descending order, we need to reverse it
+        createGasChart([...chartBlockData].reverse());
+        createTxsChart([...chartBlockData].reverse());
       }
     } else if (lastBlockNumber === 0) {
       // First load - get initial data

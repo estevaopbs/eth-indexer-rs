@@ -80,6 +80,7 @@ pub async fn get_stats(Extension(app): Extension<Arc<App>>) -> Json<IndexerStats
     };
 
     // Calculate transaction indexing percentage (only for blocks we're tracking)
+    // Use total_transactions_declared as the target (includes skipped transactions as expected)
     let transaction_indexing_percentage = if total_transactions_declared > 0 {
         (total_transactions_indexed as f64 / total_transactions_declared as f64) * 100.0
     } else {
@@ -96,6 +97,7 @@ pub async fn get_stats(Extension(app): Extension<Arc<App>>) -> Json<IndexerStats
         indexer_status: indexer_status.to_string(),
         sync_percentage,
         transaction_indexing_percentage,
+        start_block: start_block as i64,
     })
 }
 

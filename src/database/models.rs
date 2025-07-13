@@ -233,6 +233,7 @@ pub struct IndexerStats {
     pub indexer_status: String,
     pub sync_percentage: f64,
     pub transaction_indexing_percentage: f64,
+    pub start_block: i64,
 }
 
 /// Pagination parameters
