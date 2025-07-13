@@ -1154,6 +1154,14 @@ async function loadRecentBlocksDelta() {
     } else if (lastBlockNumber === 0) {
       // First load - get initial data
       await loadRecentBlocks();
+    } else {
+      // No new blocks but we need to ensure we have 5 blocks displayed
+      // Check if we have less than 5 blocks in the table
+      const blocksList = document.getElementById("recent-blocks");
+      if (blocksList && blocksList.children.length < 5) {
+        // Force a full reload to ensure we have 5 blocks
+        await loadRecentBlocks();
+      }
     }
   } catch (error) {
     console.error("Error loading recent blocks delta:", error);

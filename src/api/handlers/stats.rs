@@ -21,29 +21,8 @@ pub async fn get_stats(Extension(app): Extension<Arc<App>>) -> Json<IndexerStats
     let start_block = app.config.start_block.unwrap_or(0);
 
     let historical_count = if start_block > 0 {
-        // Try to get accurate data from BigQuery if service account is configured
-        if app.config.bigquery_service_account_path.is_some() {
-            match app
-                .rpc
-                .get_historical_transaction_count_from_bigquery(start_block)
-                .await
-            {
-                Ok(count) => count as i64,
-                Err(e) => {
-                    warn!("Failed to fetch historical data from BigQuery: {}", e);
-                    // Fallback to our estimation
-                    db.get_historical_transaction_count(start_block)
-                        .await
-                        .unwrap_or(0)
-                }
-            }
-        } else {
-            warn!("BigQuery service account not configured, using estimation for historical transaction count");
-            // Fallback to our estimation
-            db.get_historical_transaction_count(start_block)
-                .await
-                .unwrap_or(0)
-        }
+        // Use the historical transaction service
+        app.historical.get_historical_count().unwrap_or(0)
     } else {
         0
     };

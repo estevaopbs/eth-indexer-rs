@@ -499,4 +499,65 @@ impl DatabaseService {
 
         Ok((indexed_count, declared_count))
     }
+
+    /// Get cached historical transaction count for a specific block
+    pub async fn get_cached_historical_count(&self, block_number: i64) -> Result<Option<i64>> {
+        let result = sqlx::query_scalar::<_, Option<i64>>(
+            "SELECT total_transactions_before FROM historical_transaction_cache WHERE block_number = ?"
+        )
+        .bind(block_number)
+        .fetch_optional(&self.pool)
+        .await
+        .context("Failed to get cached historical count")?;
+
+        Ok(result.flatten())
+    }
+
+    /// Cache historical transaction count for a specific block
+    pub async fn cache_historical_count(&self, block_number: i64, total_transactions_before: i64) -> Result<()> {
+        sqlx::query(
+            r#"
+            INSERT OR REPLACE INTO historical_transaction_cache 
+            (block_number, total_transactions_before) 
+            VALUES (?, ?)
+            "#
+        )
+        .bind(block_number)
+        .bind(total_transactions_before)
+        .execute(&self.pool)
+        .await
+        .context("Failed to cache historical count")?;
+
+        Ok(())
+    }
+
+    /// Get all cached historical counts ordered by block number
+    pub async fn get_all_cached_historical_counts(&self) -> Result<Vec<(i64, i64)>> {
+        let result = sqlx::query_as::<_, (i64, i64)>(
+            "SELECT block_number, total_transactions_before FROM historical_transaction_cache ORDER BY block_number"
+        )
+        .fetch_all(&self.pool)
+        .await
+        .context("Failed to get all cached historical counts")?;
+
+        Ok(result)
+    }
+
+    /// Get closest cached historical count to a target block
+    pub async fn get_closest_cached_historical_count(&self, target_block: i64) -> Result<Option<(i64, i64)>> {
+        let result = sqlx::query_as::<_, (i64, i64)>(
+            r#"
+            SELECT block_number, total_transactions_before 
+            FROM historical_transaction_cache 
+            ORDER BY ABS(block_number - ?) 
+            LIMIT 1
+            "#
+        )
+        .bind(target_block)
+        .fetch_optional(&self.pool)
+        .await
+        .context("Failed to get closest cached historical count")?;
+
+        Ok(result)
+    }
 }

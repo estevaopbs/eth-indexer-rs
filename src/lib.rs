@@ -2,6 +2,7 @@ pub mod api;
 pub mod beacon;
 pub mod config;
 pub mod database;
+pub mod historical; // Add historical module
 pub mod indexer;
 pub mod rpc;
 pub mod web;
@@ -14,6 +15,7 @@ use indexer::IndexerService;
 use rpc::RpcClient;
 use std::sync::Arc;
 use tracing::{error, info};
+use crate::historical::HistoricalTransactionService;
 
 /// Represents the core application with all its services
 pub struct App {
@@ -22,6 +24,7 @@ pub struct App {
     pub rpc: Arc<RpcClient>,
     pub beacon: Arc<BeaconClient>,
     pub indexer: Arc<IndexerService>,
+    pub historical: Arc<HistoricalTransactionService>,
 }
 
 impl App {
@@ -52,12 +55,24 @@ impl App {
         ));
         info!("Indexer service initialized");
 
+        // Initialize historical transaction service
+        let historical = Arc::new(HistoricalTransactionService::new(db.clone(), config.clone()));
+        
+        // Initialize historical data if start_block is configured
+        if let Some(start_block) = config.start_block {
+            if let Err(e) = historical.initialize(start_block as i64).await {
+                error!("Failed to initialize historical transaction service: {}", e);
+            }
+        }
+        info!("Historical transaction service initialized");
+
         Ok(Self {
             config,
             db,
             rpc,
             beacon,
             indexer,
+            historical,
         })
     }
 
