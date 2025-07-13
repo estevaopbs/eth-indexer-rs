@@ -234,6 +234,8 @@ pub struct IndexerStats {
     pub sync_percentage: f64,
     pub transaction_indexing_percentage: f64,
     pub start_block: i64,
+    pub current_block_tx_indexed: i64,
+    pub current_block_tx_declared: i64,
 }
 
 /// Pagination parameters

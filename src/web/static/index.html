@@ -108,7 +108,7 @@
           </div>
           <div class="bg-white rounded-lg shadow-md p-6 stat-card">
             <div class="flex items-center justify-between">
-              <div class="flex-1">
+              <div>
                 <p class="text-sm font-medium text-gray-500">
                   Total Transactions
                 </p>
@@ -118,24 +118,6 @@
                 >
                   ...
                 </p>
-                <div class="mt-2">
-                  <p class="text-xs text-gray-400">
-                    Indexed:
-                    <span id="tx-indexed" class="text-gray-700">...</span> /
-                    Declared:
-                    <span id="tx-declared" class="text-gray-700">...</span>
-                  </p>
-                  <div class="mt-1 w-full bg-gray-200 rounded-full h-1.5">
-                    <div
-                      id="tx-progress-bar"
-                      class="bg-blue-600 h-1.5 rounded-full transition-all duration-500"
-                      style="width: 0%"
-                    ></div>
-                  </div>
-                  <p class="text-xs text-gray-400 mt-1">
-                    <span id="tx-progress-text">0%</span> processing complete
-                  </p>
-                </div>
               </div>
               <div class="bg-green-100 p-3 rounded-full">
                 <svg
@@ -188,18 +170,12 @@
             <div class="flex items-center justify-between">
               <div>
                 <p class="text-sm font-medium text-gray-500">Sync Status</p>
-                <div class="flex items-center">
-                  <p
-                    class="text-2xl font-bold text-gray-900 mr-2 stat-value"
-                    id="sync-status"
-                  >
-                    ...
-                  </p>
-                  <span
-                    class="text-sm text-gray-600"
-                    id="sync-percentage"
-                  ></span>
-                </div>
+                <p
+                  class="text-2xl font-bold text-gray-900 stat-value"
+                  id="sync-status"
+                >
+                  ...
+                </p>
               </div>
               <div id="status-icon" class="bg-yellow-100 p-3 rounded-full">
                 <svg
@@ -225,18 +201,50 @@
         <div class="mt-10 bg-white p-6 rounded-lg shadow-md">
           <div class="flex items-center justify-between mb-4">
             <h3 class="text-lg font-medium text-gray-900">Indexing Progress</h3>
-            <span class="text-sm text-gray-500" id="progress-text"
-              >Initializing...</span
-            >
-          </div>
-          <div class="w-full bg-gray-200 rounded-full h-4 mb-2">
             <div
-              class="bg-gradient-to-r from-blue-500 to-blue-600 h-4 rounded-full transition-all duration-500 ease-out"
+              class="flex flex-col items-end text-xs text-gray-600 space-y-1"
+            >
+              <div
+                class="font-mono"
+                style="min-width: 140px; text-align: right"
+              >
+                <span class="font-medium">Blocks:</span>
+                <span id="block-progress-indicator">0% (0 / 0)</span>
+              </div>
+              <div
+                class="font-mono"
+                style="min-width: 140px; text-align: right"
+              >
+                <span class="font-medium">Current Txs:</span>
+                <span id="tx-progress-indicator">0% (0 / 0)</span>
+              </div>
+            </div>
+          </div>
+
+          <!-- Combined Progress Bar with Nested Indicators -->
+          <div
+            class="relative w-full bg-gray-200 rounded-full h-5 mb-3 overflow-hidden"
+          >
+            <!-- Block Progress (Background Layer) -->
+            <div
+              class="absolute inset-0 bg-gradient-to-r from-blue-500 to-blue-600 rounded-full transition-all duration-500 ease-out"
               style="width: 0%"
               id="progress-bar"
             ></div>
+
+            <!-- Transaction Progress (Overlay Layer) - Made thinner -->
+            <div
+              class="absolute top-1.5 left-1 right-1 bg-gray-300 rounded-full h-2 overflow-hidden"
+            >
+              <div
+                class="bg-gradient-to-r from-green-500 to-green-600 h-2 rounded-full transition-all duration-500 ease-out"
+                style="width: 0%"
+                id="tx-progress-bar"
+              ></div>
+            </div>
           </div>
-          <div class="flex justify-between text-xs text-gray-500 mt-2">
+
+          <div class="flex justify-between text-xs text-gray-500">
             <span id="start-block-progress">Block 0</span>
             <span id="current-block-progress">Block ...</span>
             <span>Latest Network Block</span>

@@ -183,35 +183,11 @@ async function loadStats() {
     updateStatWithAnimation("total-accounts", formatNumber(data.total_accounts));
     updateStatWithAnimation("sync-status", data.indexer_status);
     
-    // Update transaction details
-    updateStatWithAnimation("tx-indexed", formatNumber(data.total_transactions_indexed));
-    updateStatWithAnimation("tx-declared", formatNumber(data.total_transactions_declared));
-    
-    // Update transaction processing progress
-    const txProgressBar = document.getElementById("tx-progress-bar");
-    const txProgressText = document.getElementById("tx-progress-text");
-    if (txProgressBar && txProgressText) {
-      const progressPercentage = data.transaction_indexing_percentage || 0;
-      txProgressBar.style.width = `${progressPercentage}%`;
-      txProgressText.textContent = `${progressPercentage.toFixed(1)}%`;
-      
-      // Change color based on progress
-      if (progressPercentage >= 95) {
-        txProgressBar.className = "bg-green-600 h-1.5 rounded-full transition-all duration-500";
-      } else if (progressPercentage >= 80) {
-        txProgressBar.className = "bg-yellow-500 h-1.5 rounded-full transition-all duration-500";
-      } else {
-        txProgressBar.className = "bg-blue-600 h-1.5 rounded-full transition-all duration-500";
-      }
-    }
-    
-    const syncPercentageElement = document.getElementById("sync-percentage");
-    if (syncPercentageElement) {
-      syncPercentageElement.textContent = `(${data.sync_percentage.toFixed(2)}%)`;
-    }
-
     // Update progress bar
     updateProgressBar(data.latest_block, latestNetworkBlock, data.start_block || 0);
+    
+    // Update transaction progress bar (nested) - use current block data
+    updateTransactionProgressBar(data.current_block_tx_indexed, data.current_block_tx_declared);
 
     // Update status icon color
     const statusIcon = document.getElementById("status-icon");
@@ -928,14 +904,14 @@ function createGasChart(blocks) {
   gasChart.blockData = blocks;
 }
 
-// Update progress bar
+// Update progress bar with nested indicators
 function updateProgressBar(currentBlock, networkBlock, startBlock = 0) {
   const progressBar = document.getElementById('progress-bar');
-  const progressText = document.getElementById('progress-text');
   const currentBlockProgress = document.getElementById('current-block-progress');
   const startBlockProgress = document.getElementById('start-block-progress');
+  const blockProgressIndicator = document.getElementById('block-progress-indicator');
   
-  if (networkBlock > 0 && progressBar && progressText && currentBlockProgress) {
+  if (networkBlock > 0 && progressBar && currentBlockProgress) {
     // Calculate progress from start block to network block
     const totalBlocks = networkBlock - startBlock;
     const processedBlocks = Math.max(0, currentBlock - startBlock);
@@ -943,14 +919,40 @@ function updateProgressBar(currentBlock, networkBlock, startBlock = 0) {
     
     progressBar.style.width = `${percentage}%`;
     
-    // Show simplified format: percentage (processed / total)
-    progressText.textContent = `${percentage.toFixed(3)}% (${processedBlocks.toLocaleString()} / ${totalBlocks.toLocaleString()})`;
+    // Update block progress indicator
+    if (blockProgressIndicator) {
+      blockProgressIndicator.textContent = `${percentage.toFixed(1)}% (${processedBlocks.toLocaleString()} / ${totalBlocks.toLocaleString()})`;
+    }
     
     currentBlockProgress.textContent = `Block ${currentBlock.toLocaleString()}`;
     
     // Update start block display
     if (startBlockProgress) {
       startBlockProgress.textContent = `Block ${startBlock.toLocaleString()}`;
+    }
+  }
+}
+
+// Update transaction progress bar (nested inside main bar)
+function updateTransactionProgressBar(txIndexed, txDeclared) {
+  const txProgressBar = document.getElementById("tx-progress-bar");
+  const txProgressIndicator = document.getElementById("tx-progress-indicator");
+  
+  if (txProgressBar && txProgressIndicator) {
+    const progressPercentage = txDeclared > 0 ? Math.min((txIndexed / txDeclared) * 100, 100) : 0;
+    
+    txProgressBar.style.width = `${progressPercentage}%`;
+    
+    // Update transaction progress indicator
+    txProgressIndicator.textContent = `${progressPercentage.toFixed(1)}% (${formatNumber(txIndexed)} / ${formatNumber(txDeclared)})`;
+    
+    // Change color based on progress
+    if (progressPercentage >= 95) {
+      txProgressBar.className = "bg-green-600 h-2 rounded-full transition-all duration-500 ease-out";
+    } else if (progressPercentage >= 80) {
+      txProgressBar.className = "bg-yellow-500 h-2 rounded-full transition-all duration-500 ease-out";
+    } else {
+      txProgressBar.className = "bg-gradient-to-r from-green-500 to-green-600 h-2 rounded-full transition-all duration-500 ease-out";
     }
   }
 }

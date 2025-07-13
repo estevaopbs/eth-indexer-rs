@@ -11,7 +11,6 @@ pub struct AppConfig {
     pub start_block: Option<u64>,
     pub max_concurrent_requests: usize,
     pub blocks_per_batch: usize,
-    pub log_level: String,
     pub bigquery_service_account_path: Option<String>,
 }
 
@@ -54,7 +53,6 @@ impl AppConfig {
                 .ok()
                 .and_then(|n| n.parse().ok())
                 .unwrap_or(10),
-            log_level: env::var("LOG_LEVEL").unwrap_or_else(|_| "info".to_string()),
             bigquery_service_account_path: env::var("BIGQUERY_SERVICE_ACCOUNT_PATH").ok(),
         };
 

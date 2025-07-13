@@ -87,6 +87,12 @@ pub async fn get_stats(Extension(app): Extension<Arc<App>>) -> Json<IndexerStats
         100.0
     };
 
+    // Get current block transaction information
+    let (current_block_tx_indexed, current_block_tx_declared) = db
+        .get_current_block_transaction_info()
+        .await
+        .unwrap_or((0, 0));
+
     Json(IndexerStats {
         latest_block,
         total_blocks,
@@ -98,6 +104,8 @@ pub async fn get_stats(Extension(app): Extension<Arc<App>>) -> Json<IndexerStats
         sync_percentage,
         transaction_indexing_percentage,
         start_block: start_block as i64,
+        current_block_tx_indexed,
+        current_block_tx_declared,
     })
 }
 

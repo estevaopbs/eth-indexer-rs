@@ -467,4 +467,36 @@ impl DatabaseService {
 
         Ok(withdrawals)
     }
+
+    /// Get current block transaction information
+    pub async fn get_current_block_transaction_info(&self) -> Result<(i64, i64)> {
+        // Get the latest block number
+        let latest_block = self.get_latest_block_number().await?.unwrap_or(-1);
+
+        if latest_block < 0 {
+            return Ok((0, 0));
+        }
+
+        // Get declared transaction count for current block
+        let declared_result: (Option<i64>,) =
+            sqlx::query_as("SELECT transaction_count FROM blocks WHERE number = ? LIMIT 1")
+                .bind(latest_block)
+                .fetch_one(&self.pool)
+                .await
+                .context("Failed to query current block transaction count")?;
+
+        let declared_count = declared_result.0.unwrap_or(0);
+
+        // Get indexed transaction count for current block
+        let indexed_result: (i64,) =
+            sqlx::query_as("SELECT COUNT(*) FROM transactions WHERE block_number = ?")
+                .bind(latest_block)
+                .fetch_one(&self.pool)
+                .await
+                .context("Failed to query current block indexed transactions")?;
+
+        let indexed_count = indexed_result.0;
+
+        Ok((indexed_count, declared_count))
+    }
 }
