@@ -9,9 +9,26 @@ pub struct AppConfig {
     pub beacon_rpc_url: String, // Beacon Chain API URL (now mandatory)
     pub api_port: u16,
     pub start_block: Option<i64>, // Changed from u64 to i64 to support -1
-    pub max_concurrent_requests: usize,
-    pub blocks_per_batch: usize,
-    pub sync_delay_seconds: Option<u32>, // Delay between sync attempts when already in sync
+    
+    // Worker and Queue Configuration
+    pub max_concurrent_blocks: usize,           // Max blocks being processed simultaneously
+    pub worker_pool_size: usize,               // Number of worker threads in the pool
+    pub max_concurrent_tx_receipts: usize,     // Max transaction receipts fetched simultaneously
+    pub block_queue_size_multiplier: usize,    // Queue size = worker_pool_size * multiplier
+    
+    // RPC Rate Limiting Configuration
+    pub eth_rpc_min_interval_ms: u64,          // Min interval between ETH RPC requests (ms)
+    pub beacon_rpc_min_interval_ms: u64,       // Min interval between Beacon RPC requests (ms)
+    pub eth_rpc_max_concurrent: usize,         // Max concurrent ETH RPC requests
+    pub beacon_rpc_max_concurrent: usize,      // Max concurrent Beacon RPC requests
+    
+    // Batch Processing Configuration
+    pub account_batch_size: usize,             // Batch size for account balance fetching
+    pub rpc_batch_size: usize,                // Batch size for RPC calls
+    pub max_concurrent_balance_fetches: usize, // Max concurrent balance fetch operations
+    
+    // Timing Configuration
+    pub sync_delay_seconds: Option<u32>,       // Delay between sync attempts when already in sync
     pub block_fetch_interval_seconds: Option<u32>, // Polling interval for new blocks
     pub bigquery_service_account_path: Option<String>,
 }
@@ -47,14 +64,58 @@ impl AppConfig {
                 .and_then(|p| p.parse().ok())
                 .unwrap_or(3000),
             start_block: env::var("START_BLOCK").ok().and_then(|b| b.parse().ok()),
-            max_concurrent_requests: env::var("MAX_CONCURRENT_REQUESTS")
-                .ok()
-                .and_then(|n| n.parse().ok())
-                .unwrap_or(5),
-            blocks_per_batch: env::var("BLOCKS_PER_BATCH")
+            
+            // Worker and Queue Configuration
+            max_concurrent_blocks: env::var("MAX_CONCURRENT_BLOCKS")
                 .ok()
                 .and_then(|n| n.parse().ok())
                 .unwrap_or(10),
+            worker_pool_size: env::var("WORKER_POOL_SIZE")
+                .ok()
+                .and_then(|n| n.parse().ok())
+                .unwrap_or(8),
+            max_concurrent_tx_receipts: env::var("MAX_CONCURRENT_TX_RECEIPTS")
+                .ok()
+                .and_then(|n| n.parse().ok())
+                .unwrap_or(50),
+            block_queue_size_multiplier: env::var("BLOCK_QUEUE_SIZE_MULTIPLIER")
+                .ok()
+                .and_then(|n| n.parse().ok())
+                .unwrap_or(4),
+            
+            // RPC Rate Limiting Configuration
+            eth_rpc_min_interval_ms: env::var("ETH_RPC_MIN_INTERVAL_MS")
+                .ok()
+                .and_then(|n| n.parse().ok())
+                .unwrap_or(0),
+            beacon_rpc_min_interval_ms: env::var("BEACON_RPC_MIN_INTERVAL_MS")
+                .ok()
+                .and_then(|n| n.parse().ok())
+                .unwrap_or(0),
+            eth_rpc_max_concurrent: env::var("ETH_RPC_MAX_CONCURRENT")
+                .ok()
+                .and_then(|n| n.parse().ok())
+                .unwrap_or(20),
+            beacon_rpc_max_concurrent: env::var("BEACON_RPC_MAX_CONCURRENT")
+                .ok()
+                .and_then(|n| n.parse().ok())
+                .unwrap_or(10),
+            
+            // Batch Processing Configuration
+            account_batch_size: env::var("ACCOUNT_BATCH_SIZE")
+                .ok()
+                .and_then(|n| n.parse().ok())
+                .unwrap_or(100),
+            rpc_batch_size: env::var("RPC_BATCH_SIZE")
+                .ok()
+                .and_then(|n| n.parse().ok())
+                .unwrap_or(10),
+            max_concurrent_balance_fetches: env::var("MAX_CONCURRENT_BALANCE_FETCHES")
+                .ok()
+                .and_then(|n| n.parse().ok())
+                .unwrap_or(10),
+            
+            // Timing Configuration
             sync_delay_seconds: env::var("SYNC_DELAY_SECONDS")
                 .ok()
                 .and_then(|n| n.parse().ok()),

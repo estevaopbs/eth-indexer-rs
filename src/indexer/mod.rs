@@ -42,7 +42,7 @@ impl IndexerService {
         beacon: Arc<BeaconClient>,
         config: AppConfig,
     ) -> Self {
-        let tx_processor = TransactionProcessor::new(db.clone(), rpc.clone());
+        let tx_processor = TransactionProcessor::new(db.clone(), rpc.clone(), config.clone());
         let block_processor = BlockProcessor::new(db.clone(), rpc.clone(), beacon.clone(), tx_processor.clone());
 
         Self {
@@ -69,6 +69,7 @@ impl IndexerService {
         let tx_processor = TransactionProcessor::with_token_service(
             db.clone(), 
             rpc.clone(), 
+            config.clone(),
             token_service
         );
         let block_processor = BlockProcessor::new(db.clone(), rpc.clone(), beacon.clone(), tx_processor.clone());
@@ -105,7 +106,7 @@ impl IndexerService {
                 self.initialize_start_block().await?;
 
                 // Create block queue channel
-                let queue_size = self.config.blocks_per_batch * 4; // 4x buffer
+                let queue_size = self.config.worker_pool_size * self.config.block_queue_size_multiplier;
                 let (block_sender, block_receiver) = mpsc::channel::<i64>(queue_size);
                 let receiver = Arc::new(tokio::sync::Mutex::new(block_receiver));
 
@@ -256,9 +257,9 @@ impl IndexerService {
         &self,
         receiver: Arc<tokio::sync::Mutex<mpsc::Receiver<i64>>>,
     ) -> Vec<tokio::task::JoinHandle<()>> {
-        let worker_count = self.config.blocks_per_batch;
+        let worker_count = self.config.worker_pool_size;
         let mut worker_handles = Vec::new();
-        let semaphore = Arc::new(tokio::sync::Semaphore::new(self.config.max_concurrent_requests));
+        let semaphore = Arc::new(tokio::sync::Semaphore::new(self.config.max_concurrent_blocks));
 
         info!("Starting {} workers for block processing", worker_count);
 

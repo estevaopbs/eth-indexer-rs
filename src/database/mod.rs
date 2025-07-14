@@ -764,29 +764,6 @@ impl DatabaseService {
         Ok(result.0.unwrap_or(0))
     }
 
-    /// Get historical transaction count before start block
-    /// This estimates the total transactions that existed before our indexing started
-    pub async fn get_historical_transaction_count(&self, start_block: u64) -> Result<i64> {
-        // For now, use fallback estimation until we integrate with RpcClient
-        let estimated_count = match start_block {
-            0..=1000000 => 0,                     // Genesis to early 2016
-            1000001..=4000000 => 50_000_000,      // 2016-2017: ~50M transactions
-            4000001..=8000000 => 250_000_000,     // 2018-2019: ~250M transactions
-            8000001..=12000000 => 750_000_000,    // 2020-2021: ~750M transactions
-            12000001..=15000000 => 1_200_000_000, // 2021-2022: ~1.2B transactions
-            15000001..=17000000 => 1_500_000_000, // 2022-2023: ~1.5B transactions
-            17000001..=19000000 => 1_800_000_000, // 2023-2024: ~1.8B transactions
-            19000001..=20000000 => 2_200_000_000, // 2024: ~2.2B transactions
-            _ => {
-                // For blocks after 20M, estimate ~150 txs per block average
-                let avg_txs_per_block = 150;
-                (start_block as i64) * avg_txs_per_block
-            }
-        };
-
-        Ok(estimated_count)
-    }
-
     /// Get withdrawals for a block
     pub async fn get_withdrawals_by_block(&self, block_number: i64) -> Result<Vec<Withdrawal>> {
         let withdrawals = sqlx::query_as::<_, Withdrawal>(

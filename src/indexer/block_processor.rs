@@ -253,15 +253,15 @@ impl BlockProcessor {
             withdrawal_count: Some(withdrawal_count),
 
             // Beacon Chain fields (from separate API)
-            slot: beacon_data.as_ref().and_then(|d| d.slot),
-            proposer_index: beacon_data.as_ref().and_then(|d| d.proposer_index),
-            epoch: beacon_data.as_ref().and_then(|d| d.epoch),
-            slot_root: beacon_data.as_ref().and_then(|d| d.slot_root.clone()),
-            parent_root: beacon_data.as_ref().and_then(|d| d.parent_root.clone()),
-            beacon_deposit_count: beacon_data.as_ref().and_then(|d| d.beacon_deposit_count),
-            graffiti: beacon_data.as_ref().and_then(|d| d.graffiti.clone()),
-            randao_reveal: beacon_data.as_ref().and_then(|d| d.randao_reveal.clone()),
-            randao_mix: beacon_data.as_ref().and_then(|d| d.randao_mix.clone()),
+            slot: beacon_data.as_ref().and_then(|d| d["slot"].as_i64()),
+            proposer_index: beacon_data.as_ref().and_then(|d| d["proposer_index"].as_i64()),
+            epoch: beacon_data.as_ref().and_then(|d| d["epoch"].as_i64()),
+            slot_root: beacon_data.as_ref().and_then(|d| d["slot_root"].as_str().map(|s| s.to_string())),
+            parent_root: beacon_data.as_ref().and_then(|d| d["parent_root"].as_str().map(|s| s.to_string())),
+            beacon_deposit_count: beacon_data.as_ref().and_then(|d| d["beacon_deposit_count"].as_i64()),
+            graffiti: beacon_data.as_ref().and_then(|d| d["graffiti"].as_str().map(|s| s.to_string())),
+            randao_reveal: beacon_data.as_ref().and_then(|d| d["randao_reveal"].as_str().map(|s| s.to_string())),
+            randao_mix: beacon_data.as_ref().and_then(|d| d["randao_mix"].as_str().map(|s| s.to_string())),
         };
 
         Ok(block)

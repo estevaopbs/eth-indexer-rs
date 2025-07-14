@@ -1,4 +1,5 @@
 use crate::config::AppConfig;
+use crate::executor::{EthRpcOperation, RpcExecutor};
 use anyhow::{Context, Result};
 use ethers::{
     core::types::{
@@ -12,10 +13,20 @@ use std::str::FromStr;
 use std::sync::Arc;
 use tracing::{debug, error};
 
+/// Response types for ETH RPC operations
+#[derive(Debug)]
+pub enum EthRpcResponse {
+    LatestBlockNumber(u64),
+    Block(Option<EthBlock<EthTransaction>>),
+    TransactionReceipt(Option<TransactionReceipt>),
+    ConnectionCheck(bool),
+}
+
 /// Client for interacting with Ethereum RPC
 pub struct RpcClient {
     provider: Arc<Provider<Http>>,
     config: AppConfig,
+    executor: RpcExecutor<EthRpcOperation, EthRpcResponse>,
 }
 
 impl RpcClient {
@@ -23,22 +34,55 @@ impl RpcClient {
     pub fn new(rpc_url: &str, config: AppConfig) -> Result<Self> {
         let provider = Provider::<Http>::try_from(rpc_url)
             .context(format!("Failed to connect to RPC URL: {}", rpc_url))?;
+        let provider = Arc::new(provider);
+
+        // Create RPC executor with rate limiting
+        let provider_clone = provider.clone();
+        let executor = RpcExecutor::new(
+            "ETH".to_string(),
+            config.eth_rpc_max_concurrent,
+            config.eth_rpc_min_interval_ms,
+            move |operation| {
+                let provider = provider_clone.clone();
+                async move {
+                    match operation {
+                        EthRpcOperation::GetLatestBlockNumber => {
+                            let block_number = provider.get_block_number().await?;
+                            Ok(EthRpcResponse::LatestBlockNumber(block_number.as_u64()))
+                        }
+                        EthRpcOperation::GetBlockByNumber(block_num) => {
+                            let block = provider.get_block_with_txs(BlockNumber::Number(U64::from(block_num))).await?;
+                            Ok(EthRpcResponse::Block(block))
+                        }
+                        EthRpcOperation::GetTransactionReceipt(tx_hash) => {
+                            let hash = H256::from_str(&tx_hash)?;
+                            let receipt = provider.get_transaction_receipt(hash).await?;
+                            Ok(EthRpcResponse::TransactionReceipt(receipt))
+                        }
+                        EthRpcOperation::CheckConnection => {
+                            match provider.get_block_number().await {
+                                Ok(_) => Ok(EthRpcResponse::ConnectionCheck(true)),
+                                Err(_) => Ok(EthRpcResponse::ConnectionCheck(false)),
+                            }
+                        }
+                    }
+                }
+            },
+        );
 
         Ok(Self {
-            provider: Arc::new(provider),
+            provider,
             config,
+            executor,
         })
     }
 
     /// Get the latest block number
     pub async fn get_latest_block_number(&self) -> Result<u64> {
-        let block_number = self
-            .provider
-            .get_block_number()
-            .await
-            .context("Failed to get latest block number")?;
-
-        Ok(block_number.as_u64())
+        match self.executor.execute(EthRpcOperation::GetLatestBlockNumber).await? {
+            EthRpcResponse::LatestBlockNumber(block_number) => Ok(block_number),
+            _ => Err(anyhow::anyhow!("Unexpected response type")),
+        }
     }
 
     /// Get block by number
@@ -46,14 +90,10 @@ impl RpcClient {
         &self,
         number: u64,
     ) -> Result<Option<EthBlock<EthTransaction>>> {
-        let block_number = BlockNumber::Number(number.into());
-        let block = self
-            .provider
-            .get_block_with_txs(block_number)
-            .await
-            .context(format!("Failed to get block by number: {}", number))?;
-
-        Ok(block)
+        match self.executor.execute(EthRpcOperation::GetBlockByNumber(number)).await? {
+            EthRpcResponse::Block(block) => Ok(block),
+            _ => Err(anyhow::anyhow!("Unexpected response type")),
+        }
     }
 
     /// Get block by hash
@@ -74,16 +114,10 @@ impl RpcClient {
         &self,
         tx_hash: &str,
     ) -> Result<Option<TransactionReceipt>> {
-        let hash =
-            H256::from_str(tx_hash).context(format!("Invalid transaction hash: {}", tx_hash))?;
-
-        let receipt = self
-            .provider
-            .get_transaction_receipt(hash)
-            .await
-            .context(format!("Failed to get transaction receipt: {}", tx_hash))?;
-
-        Ok(receipt)
+        match self.executor.execute(EthRpcOperation::GetTransactionReceipt(tx_hash.to_string())).await? {
+            EthRpcResponse::TransactionReceipt(receipt) => Ok(receipt),
+            _ => Err(anyhow::anyhow!("Unexpected response type")),
+        }
     }
 
     /// Get account balance
@@ -273,15 +307,16 @@ impl RpcClient {
 
     /// Check connection to RPC
     pub async fn check_connection(&self) -> Result<bool> {
-        match self.provider.get_block_number().await {
-            Ok(_) => {
-                debug!("Successfully connected to Ethereum RPC");
-                Ok(true)
+        match self.executor.execute(EthRpcOperation::CheckConnection).await? {
+            EthRpcResponse::ConnectionCheck(connected) => {
+                if connected {
+                    debug!("Successfully connected to Ethereum RPC");
+                } else {
+                    error!("Failed to connect to Ethereum RPC");
+                }
+                Ok(connected)
             }
-            Err(e) => {
-                error!("Failed to connect to Ethereum RPC: {}", e);
-                Ok(false)
-            }
+            _ => Err(anyhow::anyhow!("Unexpected response type")),
         }
     }
 }

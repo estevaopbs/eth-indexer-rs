@@ -1,4 +1,5 @@
 use crate::{
+    config::AppConfig,
     database::{Account, DatabaseService, Log, TokenTransfer, Transaction},
     rpc::RpcClient,
     token_service::TokenService,
@@ -17,16 +18,18 @@ const TRANSFER_TOPIC: &str = "0xddf252ad1be2c89b69c2b068fc378daa952ba7f163c4a116
 pub struct TransactionProcessor {
     db: Arc<DatabaseService>,
     rpc: Arc<RpcClient>,
+    config: AppConfig,
     token_service: Option<Arc<TokenService>>,
     account_cache: Arc<RwLock<HashMap<String, Option<Account>>>>,
 }
 
 impl TransactionProcessor {
     /// Create a new transaction processor
-    pub fn new(db: Arc<DatabaseService>, rpc: Arc<RpcClient>) -> Self {
+    pub fn new(db: Arc<DatabaseService>, rpc: Arc<RpcClient>, config: AppConfig) -> Self {
         Self {
             db,
             rpc,
+            config,
             token_service: None,
             account_cache: Arc::new(RwLock::new(HashMap::new())),
         }
@@ -36,11 +39,13 @@ impl TransactionProcessor {
     pub fn with_token_service(
         db: Arc<DatabaseService>,
         rpc: Arc<RpcClient>,
+        config: AppConfig,
         token_service: Arc<TokenService>,
     ) -> Self {
         Self {
             db,
             rpc,
+            config,
             token_service: Some(token_service),
             account_cache: Arc::new(RwLock::new(HashMap::new())),
         }
@@ -100,8 +105,8 @@ impl TransactionProcessor {
     ) -> Result<Vec<Option<TransactionReceipt>>> {
         use futures::future;
 
-        // Create semaphore to limit concurrent requests
-        let semaphore = Arc::new(tokio::sync::Semaphore::new(50));
+        // Create semaphore to limit concurrent requests using config parameter
+        let semaphore = Arc::new(tokio::sync::Semaphore::new(self.config.max_concurrent_tx_receipts));
 
         // Create tasks for all receipt requests
         let tasks: Vec<_> = tx_hashes
@@ -213,20 +218,18 @@ impl TransactionProcessor {
         }
 
         // Second pass: batch process accounts for unique addresses only
-        let mut all_accounts = Vec::new();
+        let unique_addresses: Vec<String> = unique_addresses.into_iter().collect();
         info!("Processing {} unique addresses for account creation", unique_addresses.len());
-        for address in unique_addresses {
-            // Use the first transaction's block number as reference
-            if let Some((first_tx, _)) = transactions_with_receipts.first() {
-                let block_number = first_tx
-                    .block_number
-                    .map(|n| n.as_u64() as i64)
-                    .unwrap_or(0);
-                if let Ok(account) = self.prepare_account(&address, block_number).await {
-                    all_accounts.push(account);
-                }
-            }
-        }
+        
+        // Use the first transaction's block number as reference
+        let block_number = if let Some((first_tx, _)) = transactions_with_receipts.first() {
+            first_tx.block_number.map(|n| n.as_u64() as i64).unwrap_or(0)
+        } else {
+            0
+        };
+
+        // Use optimized batch processing for accounts
+        let all_accounts = self.prepare_accounts_batch(&unique_addresses, block_number).await?;
         info!("Prepared {} accounts for batch insertion", all_accounts.len());
 
         Ok((
@@ -530,6 +533,89 @@ impl TransactionProcessor {
         };
 
         Ok(account)
+    }
+
+    /// Prepare accounts for batch insertion with optimized balance fetching
+    pub async fn prepare_accounts_batch(
+        &self,
+        addresses: &[String],
+        block_number: i64,
+    ) -> Result<Vec<Account>> {
+        if addresses.is_empty() {
+            return Ok(Vec::new());
+        }
+
+        info!("Preparing {} accounts in batch for block {}", addresses.len(), block_number);
+
+        // Fetch balances in batches to avoid overwhelming RPC
+        let mut all_accounts = Vec::new();
+        let batch_size = self.config.rpc_batch_size;
+        
+        for chunk in addresses.chunks(batch_size) {
+            let mut batch_accounts = Vec::new();
+            
+            // Create semaphore to limit concurrent balance fetches
+            let semaphore = Arc::new(tokio::sync::Semaphore::new(self.config.max_concurrent_balance_fetches));
+            
+            // Fetch balances concurrently within the batch
+            let balance_tasks: Vec<_> = chunk
+                .iter()
+                .map(|address| {
+                    let rpc = self.rpc.clone();
+                    let address = address.clone();
+                    let semaphore = semaphore.clone();
+                    
+                    async move {
+                        let _permit = semaphore.acquire().await?;
+                        let balance = match rpc.get_balance(&address, Some(block_number as u64)).await {
+                            Ok(bal) => bal.to_string(),
+                            Err(e) => {
+                                debug!("Failed to get balance for {}: {}, using 0", address, e);
+                                "0".to_string()
+                            }
+                        };
+                        Ok::<(String, String), anyhow::Error>((address, balance))
+                    }
+                })
+                .collect();
+
+            // Execute balance fetches concurrently
+            let balance_results = futures::future::try_join_all(balance_tasks).await?;
+            
+            // Process each account with its balance
+            for (address, balance) in balance_results {
+                // Get existing account or create new one using cache
+                let existing_account = self.get_account_cached(&address).await?;
+
+                let account = if let Some(mut existing) = existing_account {
+                    existing.balance = balance;
+                    existing.transaction_count += 1;
+                    existing.last_seen_block = block_number;
+                    existing
+                } else {
+                    let new_account = Account {
+                        address: address.clone(),
+                        balance,
+                        transaction_count: 1,
+                        first_seen_block: block_number,
+                        last_seen_block: block_number,
+                    };
+                    new_account
+                };
+
+                batch_accounts.push(account);
+            }
+            
+            all_accounts.extend(batch_accounts);
+            
+            // Small delay between batches to avoid overwhelming RPC
+            if addresses.len() > batch_size {
+                tokio::time::sleep(tokio::time::Duration::from_millis(self.config.eth_rpc_min_interval_ms)).await;
+            }
+        }
+
+        info!("Successfully prepared {} accounts in batch", all_accounts.len());
+        Ok(all_accounts)
     }
 
     /// Get account with caching to reduce database queries

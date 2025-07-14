@@ -2,6 +2,7 @@ pub mod api;
 pub mod beacon;
 pub mod config;
 pub mod database;
+pub mod executor; // Generic RPC executor
 pub mod historical; // Add historical module
 pub mod indexer;
 pub mod network_stats; // Add network stats module
@@ -51,8 +52,8 @@ impl App {
         // Resolve start_block using database configuration and RPC (for -1 case)
         config.resolve_start_block(&db, Some(&rpc)).await?;
 
-        // Initialize Beacon client
-        let beacon = Arc::new(BeaconClient::new(&config.beacon_rpc_url));
+        // Initialize Beacon client with rate limiting
+        let beacon = Arc::new(BeaconClient::new(&config.beacon_rpc_url, &config));
         info!("Beacon client connected to {}", config.beacon_rpc_url);
 
         // Initialize token service
