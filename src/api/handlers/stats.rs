@@ -33,11 +33,16 @@ pub async fn get_stats(Extension(app): Extension<Arc<App>>) -> Json<IndexerStats
 
     // Calculate total_blockchain_transactions based on start_block configuration
     let total_blockchain_transactions = if start_block < 0 {
-        // When START_BLOCK=-1, we started from the latest block, so total should equal network total
-        app.network_stats.get_total_network_transactions().await.unwrap_or(total_transactions as u64) as i64
-    } else {
-        // Normal case: historical + indexed
+        // When START_BLOCK=-1, we started from the latest block, so total should equal indexed transactions
+        // In this case, we don't have a reliable way to get total network transactions
+        // so we use what we have: historical + indexed
         historical_count + total_transactions_indexed
+    } else if historical_count > 0 {
+        // Normal case: historical + indexed (only when historical data is available)
+        historical_count + total_transactions_indexed
+    } else {
+        // No historical data available - set to 0 to indicate unavailable
+        0
     };
 
     // Count accounts (if the table exists)

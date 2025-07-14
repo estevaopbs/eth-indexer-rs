@@ -213,7 +213,6 @@ async function loadStats() {
 
     let networkStatsData = {
       latest_network_block: 0,
-      total_network_transactions: 0,
       total_network_accounts: 0
     };
     if (networkStatsResponse.ok) {
@@ -224,15 +223,17 @@ async function loadStats() {
 
     // Update network stats
     updateStatWithAnimation("latest-network-block", formatNumber(networkStatsData.latest_network_block));
-    updateStatWithAnimation("total-network-txs", formatNumber(networkStatsData.total_network_transactions));
     updateStatWithAnimation("total-network-accounts", formatNumber(networkStatsData.total_network_accounts));
 
     // Update indexed stats
     updateStatWithAnimation("latest-indexed-block", formatNumber(data.latest_block));
     updateStatWithAnimation("total-indexed-txs", formatNumber(data.real_transactions_indexed));
-    updateStatWithAnimation("total-blockchain-txs", formatNumber(data.total_blockchain_transactions));
     updateStatWithAnimation("total-indexed-accounts", formatNumber(data.total_accounts));
+    updateStatWithAnimation("total-indexed-blocks", formatNumber(data.total_blocks));
     updateStatWithAnimation("sync-status", data.indexer_status);
+
+    // Update total blockchain transactions with availability indicator
+    updateTotalBlockchainTransactions(data);
 
     // Update progress bar
     updateProgressBar(data.latest_block, latestNetworkBlock, data.start_block || 0);
@@ -533,7 +534,6 @@ async function loadTransactionStats() {
 
     // Update transaction-related stats with animation for changes
     updateStatWithAnimation('total-indexed-txs', formatNumber(data.real_transactions_indexed));
-    updateStatWithAnimation('total-blockchain-txs', formatNumber(data.total_blockchain_transactions));
     updateStatWithAnimation('total-indexed-accounts', formatNumber(data.total_accounts));
     updateStatWithAnimation('tx-indexed', formatNumber(data.real_transactions_indexed));
     updateStatWithAnimation('tx-declared', formatNumber(data.total_transactions_declared));
@@ -573,27 +573,34 @@ async function loadBlockStats() {
       }
     }
 
-    // Update network sync progress
-    if (data.network_latest_block && data.latest_block_number) {
-      updateNetworkProgress(data.latest_block_number, data.network_latest_block);
-    }
+    // Network sync progress removed (elements no longer exist)
   } catch (error) {
     console.error("Error loading block stats:", error);
     throw error;
   }
 }
 
-// Update network sync progress
-function updateNetworkProgress(latestBlock, networkBlock) {
-  const progressBar = document.getElementById('network-progress-bar');
-  const progressText = document.getElementById('network-progress-text');
+// Update total blockchain transactions with availability check
+function updateTotalBlockchainTransactions(data) {
+  const element = document.getElementById("total-blockchain-transactions");
+  if (!element) {
+    console.warn("Element 'total-blockchain-transactions' not found");
+    return;
+  }
 
-  if (progressBar && progressText) {
-    const percentage = Math.min((latestBlock / networkBlock) * 100, 100);
-    progressBar.style.width = `${percentage}%`;
-    progressText.textContent = `${percentage.toFixed(2)}% (${latestBlock.toLocaleString()} / ${networkBlock.toLocaleString()})`;
+  // Check if historical transactions are available
+  if (data.historical_transactions_count && data.historical_transactions_count > 0) {
+    // Historical data is available, show the sum
+    const total = data.historical_transactions_count + data.real_transactions_indexed;
+    updateStatWithAnimation("total-blockchain-transactions", formatNumber(total));
+  } else {
+    // Historical data not available, show unavailable message
+    element.textContent = "Data unavailable";
+    element.classList.add("text-gray-500");
   }
 }
+
+// Function removed - network progress elements no longer exist
 
 // Global variables for delta updates
 let lastBlockNumber = 0;
@@ -692,7 +699,7 @@ document.addEventListener("DOMContentLoaded", () => {
 // Show/hide frequent data updating indicator
 function setFrequentDataUpdating(isUpdating) {
   // Update stats indicators for frequently updated items
-  const statsElements = ['latest-network-block', 'latest-indexed-block', 'total-network-txs', 'total-indexed-txs', 'total-blockchain-txs', 'total-network-accounts', 'total-indexed-accounts', 'tx-indexed', 'tx-declared'];
+  const statsElements = ['latest-network-block', 'latest-indexed-block', 'total-indexed-blocks', 'sync-status', 'total-blockchain-transactions', 'total-indexed-txs', 'total-network-accounts', 'total-indexed-accounts'];
   statsElements.forEach(id => {
     const element = document.getElementById(id);
     if (element) {

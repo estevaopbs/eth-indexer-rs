@@ -72,11 +72,8 @@
           </p>
         </div>
 
-        <!-- Stats Grid -->
-        <div
-          class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6 mb-8"
-          id="stats-container"
-        >
+        <!-- First Stats Row -->
+        <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6 mb-8">
           <!-- Latest Network Block -->
           <div class="bg-white rounded-lg shadow-md p-6 stat-card">
             <div class="flex items-center justify-between">
@@ -126,10 +123,10 @@
                 </p>
                 <p class="text-xs text-gray-400 mt-1">Our indexer</p>
               </div>
-              <div class="bg-indigo-100 p-3 rounded-full">
+              <div class="bg-blue-100 p-3 rounded-full">
                 <svg
                   xmlns="http://www.w3.org/2000/svg"
-                  class="h-6 w-6 text-indigo-600"
+                  class="h-6 w-6 text-blue-600"
                   fill="none"
                   viewBox="0 0 24 24"
                   stroke="currentColor"
@@ -145,25 +142,23 @@
             </div>
           </div>
 
-          <!-- Total Network Transactions -->
+          <!-- Indexed Blocks -->
           <div class="bg-white rounded-lg shadow-md p-6 stat-card">
             <div class="flex items-center justify-between">
               <div>
-                <p class="text-sm font-medium text-gray-500">
-                  Total Network Transactions
-                </p>
+                <p class="text-sm font-medium text-gray-500">Indexed Blocks</p>
                 <p
                   class="text-2xl font-bold text-gray-900 stat-value"
-                  id="total-network-txs"
+                  id="total-indexed-blocks"
                 >
                   ...
                 </p>
-                <p class="text-xs text-gray-400 mt-1">Estimated total</p>
+                <p class="text-xs text-gray-400 mt-1">Processed blocks</p>
               </div>
-              <div class="bg-green-100 p-3 rounded-full">
+              <div class="bg-blue-100 p-3 rounded-full">
                 <svg
                   xmlns="http://www.w3.org/2000/svg"
-                  class="h-6 w-6 text-green-600"
+                  class="h-6 w-6 text-blue-600"
                   fill="none"
                   viewBox="0 0 24 24"
                   stroke="currentColor"
@@ -172,32 +167,30 @@
                     stroke-linecap="round"
                     stroke-linejoin="round"
                     stroke-width="2"
-                    d="M8 7h12m0 0l-4-4m4 4l-4 4m0 6H4m0 0l4 4m-4-4l4-4"
+                    d="M19 11H5m14 0a2 2 0 012 2v6a2 2 0 01-2 2H5a2 2 0 01-2-2v-6a2 2 0 012-2m14 0V9a2 2 0 00-2-2M5 11V9a2 2 0 012-2m0 0V5a2 2 0 012-2h6a2 2 0 012 2v2M7 7h10"
                   />
                 </svg>
               </div>
             </div>
           </div>
 
-          <!-- Total Indexed Transactions -->
+          <!-- Sync Status -->
           <div class="bg-white rounded-lg shadow-md p-6 stat-card">
             <div class="flex items-center justify-between">
               <div>
-                <p class="text-sm font-medium text-gray-500">
-                  Indexed Transactions
-                </p>
+                <p class="text-sm font-medium text-gray-500">Sync Status</p>
                 <p
                   class="text-2xl font-bold text-gray-900 stat-value"
-                  id="total-indexed-txs"
+                  id="sync-status"
                 >
                   ...
                 </p>
-                <p class="text-xs text-gray-400 mt-1">From start block</p>
+                <p class="text-xs text-gray-400 mt-1">Indexer state</p>
               </div>
-              <div class="bg-emerald-100 p-3 rounded-full">
+              <div id="status-icon" class="bg-yellow-100 p-3 rounded-full">
                 <svg
                   xmlns="http://www.w3.org/2000/svg"
-                  class="h-6 w-6 text-emerald-600"
+                  class="h-6 w-6 text-yellow-600"
                   fill="none"
                   viewBox="0 0 24 24"
                   stroke="currentColor"
@@ -206,7 +199,7 @@
                     stroke-linecap="round"
                     stroke-linejoin="round"
                     stroke-width="2"
-                    d="M4 7v10c0 2.21 3.582 4 8 4s8-1.79 8-4V7M4 7c0 2.21 3.582 4 8 4s8-1.79 8-4M4 7c0-2.21 3.582-4 8-4s8 1.79 8 4"
+                    d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"
                   />
                 </svg>
               </div>
@@ -225,16 +218,16 @@
                 </p>
                 <p
                   class="text-2xl font-bold text-gray-900 stat-value"
-                  id="total-blockchain-txs"
+                  id="total-blockchain-transactions"
                 >
                   ...
                 </p>
                 <p class="text-xs text-gray-400 mt-1">Historical + Indexed</p>
               </div>
-              <div class="bg-teal-100 p-3 rounded-full">
+              <div class="bg-indigo-100 p-3 rounded-full">
                 <svg
                   xmlns="http://www.w3.org/2000/svg"
-                  class="h-6 w-6 text-teal-600"
+                  class="h-6 w-6 text-indigo-600"
                   fill="none"
                   viewBox="0 0 24 24"
                   stroke="currentColor"
@@ -243,7 +236,41 @@
                     stroke-linecap="round"
                     stroke-linejoin="round"
                     stroke-width="2"
-                    d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z"
+                    d="M21 12a9 9 0 01-9 9m9-9a9 9 0 00-9-9m9 9H3m9 9v-9m0-9v9m0 9a9 9 0 01-9-9m9 9c5 0 9-4 9-9s-4-9-9-9"
+                  />
+                </svg>
+              </div>
+            </div>
+          </div>
+
+          <!-- Indexed Transactions -->
+          <div class="bg-white rounded-lg shadow-md p-6 stat-card">
+            <div class="flex items-center justify-between">
+              <div>
+                <p class="text-sm font-medium text-gray-500">
+                  Indexed Transactions
+                </p>
+                <p
+                  class="text-2xl font-bold text-gray-900 stat-value"
+                  id="total-indexed-txs"
+                >
+                  ...
+                </p>
+                <p class="text-xs text-gray-400 mt-1">From start block</p>
+              </div>
+              <div class="bg-indigo-100 p-3 rounded-full">
+                <svg
+                  xmlns="http://www.w3.org/2000/svg"
+                  class="h-6 w-6 text-indigo-600"
+                  fill="none"
+                  viewBox="0 0 24 24"
+                  stroke="currentColor"
+                >
+                  <path
+                    stroke-linecap="round"
+                    stroke-linejoin="round"
+                    stroke-width="2"
+                    d="M4 7v10c0 2.21 3.582 4 8 4s8-1.79 8-4V7M4 7c0 2.21 3.582 4 8 4s8-1.79 8-4M4 7c0-2.21 3.582-4 8-4s8 1.79 8 4"
                   />
                 </svg>
               </div>
@@ -277,7 +304,7 @@
                     stroke-linecap="round"
                     stroke-linejoin="round"
                     stroke-width="2"
-                    d="M12 4.354a4 4 0 110 5.292M15 21H3v-1a6 6 0 0112 0v1zm0 0h6v-1a6 6 0 00-9-5.197M13 7a4 4 0 11-8 0 4 4 0 018 0z"
+                    d="M17 20h5v-2a3 3 0 00-5.356-1.857M17 20H7m10 0v-2c0-.656-.126-1.283-.356-1.857M7 20H2v-2a3 3 0 015.356-1.857M7 20v-2c0-.656.126-1.283.356-1.857m0 0a5.002 5.002 0 019.288 0M15 7a3 3 0 11-6 0 3 3 0 016 0zm6 3a2 2 0 11-4 0 2 2 0 014 0zM7 10a2 2 0 11-4 0 2 2 0 014 0z"
                   />
                 </svg>
               </div>
@@ -289,7 +316,7 @@
             <div class="flex items-center justify-between">
               <div>
                 <p class="text-sm font-medium text-gray-500">
-                  Total Indexed Accounts
+                  Indexed Accounts
                 </p>
                 <p
                   class="text-2xl font-bold text-gray-900 stat-value"
@@ -299,10 +326,10 @@
                 </p>
                 <p class="text-xs text-gray-400 mt-1">Our database</p>
               </div>
-              <div class="bg-violet-100 p-3 rounded-full">
+              <div class="bg-purple-100 p-3 rounded-full">
                 <svg
                   xmlns="http://www.w3.org/2000/svg"
-                  class="h-6 w-6 text-violet-600"
+                  class="h-6 w-6 text-purple-600"
                   fill="none"
                   viewBox="0 0 24 24"
                   stroke="currentColor"
@@ -311,39 +338,7 @@
                     stroke-linecap="round"
                     stroke-linejoin="round"
                     stroke-width="2"
-                    d="M17 20h5v-2a3 3 0 00-5.356-1.857M17 20H7m10 0v-2c0-.656-.126-1.283-.356-1.857M7 20H2v-2a3 3 0 015.356-1.857M7 20v-2c0-.656.126-1.283.356-1.857m0 0a5.002 5.002 0 019.288 0M15 7a3 3 0 11-6 0 3 3 0 016 0zm6 3a2 2 0 11-4 0 2 2 0 014 0zM7 10a2 2 0 11-4 0 2 2 0 014 0z"
-                  />
-                </svg>
-              </div>
-            </div>
-          </div>
-
-          <!-- Sync Status -->
-          <div class="bg-white rounded-lg shadow-md p-6 stat-card">
-            <div class="flex items-center justify-between">
-              <div>
-                <p class="text-sm font-medium text-gray-500">Sync Status</p>
-                <p
-                  class="text-2xl font-bold text-gray-900 stat-value"
-                  id="sync-status"
-                >
-                  ...
-                </p>
-                <p class="text-xs text-gray-400 mt-1">Indexer state</p>
-              </div>
-              <div id="status-icon" class="bg-yellow-100 p-3 rounded-full">
-                <svg
-                  xmlns="http://www.w3.org/2000/svg"
-                  class="h-6 w-6 text-yellow-600"
-                  fill="none"
-                  viewBox="0 0 24 24"
-                  stroke="currentColor"
-                >
-                  <path
-                    stroke-linecap="round"
-                    stroke-linejoin="round"
-                    stroke-width="2"
-                    d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"
+                    d="M12 4.354a4 4 0 110 5.292M15 21H3v-1a6 6 0 0112 0v1zm0 0h6v-1a6 6 0 00-9-5.197M13 7a4 4 0 11-8 0 4 4 0 018 0z"
                   />
                 </svg>
               </div>
