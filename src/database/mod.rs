@@ -5,7 +5,7 @@ use sqlx::{
     migrate::MigrateDatabase, pool::PoolOptions, sqlite::SqlitePool, Executor, Pool, Sqlite,
 };
 use std::path::Path;
-use tracing::{info, warn};
+use tracing::{error, info, warn};
 
 pub use models::*;
 
@@ -273,6 +273,25 @@ impl DatabaseService {
         Ok(())
     }
 
+    /// Get token transfers by transaction hash
+    pub async fn get_token_transfers_by_transaction_hash(&self, tx_hash: &str) -> Result<Vec<TokenTransfer>> {
+        let transfers = sqlx::query_as::<_, TokenTransfer>(
+            r#"
+            SELECT id, transaction_hash, token_address, from_address, to_address, amount, 
+                   block_number, token_type, token_id, created_at
+            FROM token_transfers 
+            WHERE transaction_hash = ? 
+            ORDER BY id
+            "#
+        )
+        .bind(tx_hash)
+        .fetch_all(&self.pool)
+        .await
+        .context("Failed to get token transfers by transaction hash")?;
+
+        Ok(transfers)
+    }
+
     /// Insert multiple transactions in a single batch for better performance
     pub async fn insert_transactions_batch(&self, transactions: &[Transaction]) -> Result<()> {
         if transactions.is_empty() {
@@ -356,6 +375,8 @@ impl DatabaseService {
             return Ok(());
         }
 
+        info!("Starting batch insert of {} accounts", accounts.len());
+
         let mut query_builder = sqlx::QueryBuilder::new(
             "INSERT OR IGNORE INTO accounts (address, balance, transaction_count, first_seen_block, last_seen_block) "
         );
@@ -368,8 +389,180 @@ impl DatabaseService {
                 .push_bind(account.last_seen_block);
         });
 
-        query_builder.build().execute(&self.pool).await?;
+        let result = query_builder.build().execute(&self.pool).await?;
+        info!("Batch insert completed: {} rows inserted/ignored", result.rows_affected());
         Ok(())
+    }
+
+    // ============================================================================
+    // TOKEN MANAGEMENT
+    // ============================================================================
+
+    /// Insert or update token information
+    pub async fn upsert_token(&self, token: &Token) -> Result<()> {
+        sqlx::query(
+            r#"
+            INSERT INTO tokens (
+                address, name, symbol, decimals, token_type, 
+                first_seen_block, last_seen_block, total_transfers
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+            ON CONFLICT(address) DO UPDATE SET
+                name = COALESCE(EXCLUDED.name, name),
+                symbol = COALESCE(EXCLUDED.symbol, symbol),
+                decimals = COALESCE(EXCLUDED.decimals, decimals),
+                last_seen_block = MAX(last_seen_block, EXCLUDED.last_seen_block),
+                total_transfers = total_transfers + 1,
+                updated_at = CURRENT_TIMESTAMP
+            "#,
+        )
+        .bind(&token.address)
+        .bind(&token.name)
+        .bind(&token.symbol)
+        .bind(token.decimals)
+        .bind(&token.token_type)
+        .bind(token.first_seen_block)
+        .bind(token.last_seen_block)
+        .bind(token.total_transfers)
+        .execute(&self.pool)
+        .await
+        .context("Failed to upsert token")?;
+
+        Ok(())
+    }
+
+    /// Get token by address
+    pub async fn get_token_by_address(&self, address: &str) -> Result<Option<Token>> {
+        let token = sqlx::query_as::<_, Token>(
+            "SELECT address, name, symbol, decimals, token_type, first_seen_block, last_seen_block, total_transfers, created_at, updated_at FROM tokens WHERE address = ?"
+        )
+        .bind(address)
+        .fetch_optional(&self.pool)
+        .await
+        .context("Failed to get token by address")?;
+
+        Ok(token)
+    }
+
+    /// Get all tokens with pagination
+    pub async fn get_tokens(&self, offset: i64, limit: i64) -> Result<Vec<Token>> {
+        let tokens = sqlx::query_as::<_, Token>(
+            "SELECT address, name, symbol, decimals, token_type, first_seen_block, last_seen_block, total_transfers, created_at, updated_at FROM tokens ORDER BY total_transfers DESC LIMIT ? OFFSET ?"
+        )
+        .bind(limit)
+        .bind(offset)
+        .fetch_all(&self.pool)
+        .await
+        .context("Failed to get tokens")?;
+
+        Ok(tokens)
+    }
+
+    // ============================================================================
+    // TOKEN BALANCE MANAGEMENT
+    // ============================================================================
+
+    /// Insert or update token balance
+    pub async fn upsert_token_balance(&self, balance: &TokenBalance) -> Result<()> {
+        info!(
+            "Upserting token balance: {} {} for {} at block {}",
+            balance.balance, balance.token_address, balance.account_address, balance.block_number
+        );
+
+        match sqlx::query(
+            r#"
+            INSERT INTO token_balances (
+                account_address, token_address, balance, 
+                block_number, last_updated_block
+            ) VALUES (?, ?, ?, ?, ?)
+            ON CONFLICT(account_address, token_address) DO UPDATE SET
+                balance = EXCLUDED.balance,
+                last_updated_block = EXCLUDED.last_updated_block,
+                updated_at = CURRENT_TIMESTAMP
+            "#,
+        )
+        .bind(&balance.account_address)
+        .bind(&balance.token_address)
+        .bind(&balance.balance)
+        .bind(balance.block_number)
+        .bind(balance.last_updated_block)
+        .execute(&self.pool)
+        .await
+        {
+            Ok(result) => {
+                info!(
+                    "Successfully upserted token balance for {} holding {} (rows affected: {})",
+                    balance.account_address, balance.token_address, result.rows_affected()
+                );
+                Ok(())
+            }
+            Err(e) => {
+                error!(
+                    "Failed to upsert token balance for {} holding {}: {}",
+                    balance.account_address, balance.token_address, e
+                );
+                Err(anyhow::anyhow!("Failed to upsert token balance: {}", e))
+            }
+        }
+    }
+
+    /// Get token balance for specific account and token
+    pub async fn get_token_balance(
+        &self,
+        account_address: &str,
+        token_address: &str,
+    ) -> Result<Option<TokenBalance>> {
+        let balance = sqlx::query_as::<_, TokenBalance>(
+            "SELECT id, account_address, token_address, balance, block_number, last_updated_block, created_at, updated_at FROM token_balances WHERE account_address = ? AND token_address = ?"
+        )
+        .bind(account_address)
+        .bind(token_address)
+        .fetch_optional(&self.pool)
+        .await
+        .context("Failed to get token balance")?;
+
+        Ok(balance)
+    }
+
+    /// Get all token balances for an account
+    pub async fn get_account_token_balances(&self, account_address: &str) -> Result<Vec<TokenBalance>> {
+        let balances = sqlx::query_as::<_, TokenBalance>(
+            "SELECT id, account_address, token_address, balance, block_number, last_updated_block, created_at, updated_at FROM token_balances WHERE account_address = ? ORDER BY last_updated_block DESC"
+        )
+        .bind(account_address)
+        .fetch_all(&self.pool)
+        .await
+        .context("Failed to get account token balances")?;
+
+        Ok(balances)
+    }
+
+    /// Get all accounts holding a specific token
+    pub async fn get_token_holders(&self, token_address: &str, offset: i64, limit: i64) -> Result<Vec<TokenBalance>> {
+        let holders = sqlx::query_as::<_, TokenBalance>(
+            "SELECT id, account_address, token_address, balance, block_number, last_updated_block, created_at, updated_at FROM token_balances WHERE token_address = ? AND balance != '0' ORDER BY CAST(balance AS REAL) DESC LIMIT ? OFFSET ?"
+        )
+        .bind(token_address)
+        .bind(limit)
+        .bind(offset)
+        .fetch_all(&self.pool)
+        .await
+        .context("Failed to get token holders")?;
+
+        Ok(holders)
+    }
+
+    /// Get token balances that need updating (older than specified block)
+    pub async fn get_stale_token_balances(&self, min_block: i64, limit: i64) -> Result<Vec<TokenBalance>> {
+        let balances = sqlx::query_as::<_, TokenBalance>(
+            "SELECT id, account_address, token_address, balance, block_number, last_updated_block, created_at, updated_at FROM token_balances WHERE last_updated_block < ? ORDER BY last_updated_block ASC LIMIT ?"
+        )
+        .bind(min_block)
+        .bind(limit)
+        .fetch_all(&self.pool)
+        .await
+        .context("Failed to get stale token balances")?;
+
+        Ok(balances)
     }
 
     /// Get the latest block number
@@ -639,121 +832,57 @@ impl DatabaseService {
         Ok((indexed_count, declared_count))
     }
 
-    /// Get cached historical transaction count for a specific block
-    pub async fn get_cached_historical_count(&self, block_number: i64) -> Result<Option<i64>> {
-        let result = sqlx::query_scalar::<_, Option<i64>>(
-            "SELECT total_transactions_before FROM historical_transaction_cache WHERE block_number = ?"
+    /// Get the start block and historical transaction count from cache
+    pub async fn get_start_block_cache(&self) -> Result<Option<(u64, Option<i64>)>> {
+        let result = sqlx::query_as::<_, (i64, Option<i64>)>(
+            "SELECT start_block, total_transactions_before FROM start_block_cache LIMIT 1"
         )
-        .bind(block_number)
+        .fetch_optional(&self.pool)
+        .await
+        .context("Failed to get start block cache")?;
+
+        Ok(result.map(|(start_block, total_tx)| (start_block as u64, total_tx)))
+    }
+
+    /// Initialize start block cache (insert only if table is empty)
+    pub async fn init_start_block_cache(&self, start_block: u64) -> Result<()> {
+        sqlx::query(
+            r#"
+            INSERT INTO start_block_cache (start_block, total_transactions_before) 
+            SELECT ?, NULL
+            WHERE NOT EXISTS (SELECT 1 FROM start_block_cache)
+            "#,
+        )
+        .bind(start_block as i64)
+        .execute(&self.pool)
+        .await
+        .context("Failed to initialize start block cache")?;
+
+        Ok(())
+    }
+
+    /// Update the historical transaction count in the cache
+    pub async fn update_historical_transaction_count(&self, count: i64) -> Result<()> {
+        sqlx::query(
+            "UPDATE start_block_cache SET total_transactions_before = ?, updated_at = CURRENT_TIMESTAMP"
+        )
+        .bind(count)
+        .execute(&self.pool)
+        .await
+        .context("Failed to update historical transaction count")?;
+
+        Ok(())
+    }
+
+    /// Get the cached historical transaction count
+    pub async fn get_cached_historical_count(&self) -> Result<Option<i64>> {
+        let result = sqlx::query_as::<_, (Option<i64>,)>(
+            "SELECT total_transactions_before FROM start_block_cache LIMIT 1"
+        )
         .fetch_optional(&self.pool)
         .await
         .context("Failed to get cached historical count")?;
 
-        Ok(result.flatten())
-    }
-
-    /// Cache historical transaction count for a specific block
-    pub async fn cache_historical_count(
-        &self,
-        block_number: i64,
-        total_transactions_before: i64,
-    ) -> Result<()> {
-        sqlx::query(
-            r#"
-            INSERT OR REPLACE INTO historical_transaction_cache 
-            (block_number, total_transactions_before) 
-            VALUES (?, ?)
-            "#,
-        )
-        .bind(block_number)
-        .bind(total_transactions_before)
-        .execute(&self.pool)
-        .await
-        .context("Failed to cache historical count")?;
-
-        Ok(())
-    }
-
-    /// Get all cached historical counts ordered by block number
-    pub async fn get_all_cached_historical_counts(&self) -> Result<Vec<(i64, i64)>> {
-        let result = sqlx::query_as::<_, (i64, i64)>(
-            "SELECT block_number, total_transactions_before FROM historical_transaction_cache ORDER BY block_number"
-        )
-        .fetch_all(&self.pool)
-        .await
-        .context("Failed to get all cached historical counts")?;
-
-        Ok(result)
-    }
-
-    /// Get closest cached historical count to a target block
-    pub async fn get_closest_cached_historical_count(
-        &self,
-        target_block: i64,
-    ) -> Result<Option<(i64, i64)>> {
-        let result = sqlx::query_as::<_, (i64, i64)>(
-            r#"
-            SELECT block_number, total_transactions_before 
-            FROM historical_transaction_cache 
-            ORDER BY ABS(block_number - ?) 
-            LIMIT 1
-            "#,
-        )
-        .bind(target_block)
-        .fetch_optional(&self.pool)
-        .await
-        .context("Failed to get closest cached historical count")?;
-
-        Ok(result)
-    }
-
-    /// Get a configuration value from the database
-    pub async fn get_config(&self, key: &str) -> Result<Option<String>> {
-        let result = sqlx::query_as::<_, (String,)>("SELECT value FROM config WHERE key = ?")
-            .bind(key)
-            .fetch_optional(&self.pool)
-            .await
-            .context("Failed to get config value")?;
-
-        Ok(result.map(|(value,)| value))
-    }
-
-    /// Set a configuration value in the database
-    pub async fn set_config(&self, key: &str, value: &str) -> Result<()> {
-        sqlx::query(
-            r#"
-            INSERT INTO config (key, value) 
-            VALUES (?, ?)
-            ON CONFLICT(key) DO UPDATE SET 
-                value = excluded.value,
-                updated_at = CURRENT_TIMESTAMP
-            "#,
-        )
-        .bind(key)
-        .bind(value)
-        .execute(&self.pool)
-        .await
-        .context("Failed to set config value")?;
-
-        Ok(())
-    }
-
-    /// Get the start block from database configuration
-    pub async fn get_start_block(&self) -> Result<Option<u64>> {
-        if let Some(value_str) = self.get_config("start_block").await? {
-            if value_str != "0" {
-                let start_block = value_str
-                    .parse::<u64>()
-                    .context("Failed to parse start_block from database")?;
-                return Ok(Some(start_block));
-            }
-        }
-        Ok(None)
-    }
-
-    /// Set the start block in database configuration
-    pub async fn set_start_block(&self, start_block: u64) -> Result<()> {
-        self.set_config("start_block", &start_block.to_string())
-            .await
+        Ok(result.and_then(|(count,)| count))
     }
 }

@@ -113,6 +113,7 @@ async function loadAccountDetails(address) {
     const data = await response.json();
     displayAccountDetails(data.account);
     loadAccountTransactions(address);
+    loadTokenBalances(address);
     
   } catch (error) {
     console.error("Error loading account details:", error);
@@ -336,6 +337,132 @@ function hideError() {
 
 function showContent() {
   document.getElementById("account-content").classList.remove("hidden");
+}
+
+// Load token balances for the account
+async function loadTokenBalances(address) {
+  showTokenBalancesLoading();
+  
+  try {
+    const response = await fetch(`${API_BASE}/tokens/balances?account=${address}`);
+    
+    if (!response.ok) {
+      throw new Error(`API returned ${response.status}`);
+    }
+    
+    const data = await response.json();
+    displayTokenBalances(data.balances || []);
+    
+  } catch (error) {
+    console.error("Error loading token balances:", error);
+    showNoTokenBalances();
+  }
+}
+
+// Display token balances
+function displayTokenBalances(balances) {
+  const tableBody = document.getElementById("token-balances-table");
+  
+  if (!balances || balances.length === 0) {
+    showNoTokenBalances();
+    return;
+  }
+  
+  tableBody.innerHTML = "";
+  
+  balances.forEach(balance => {
+    const row = document.createElement("tr");
+    row.className = "hover:bg-gray-50";
+    
+    // Format token balance
+    const formattedBalance = formatTokenBalance(balance.balance, balance.token_decimals);
+    
+    // Format token name and symbol
+    const tokenName = balance.token_name || "Unknown Token";
+    const tokenSymbol = balance.token_symbol || "???";
+    
+    row.innerHTML = `
+      <td class="px-6 py-4 whitespace-nowrap">
+        <div class="text-sm font-medium text-gray-900">${tokenName}</div>
+        <div class="text-sm text-gray-500">${tokenSymbol}</div>
+      </td>
+      <td class="px-6 py-4 whitespace-nowrap">
+        <span class="text-sm font-medium text-gray-900">${formattedBalance} ${tokenSymbol}</span>
+      </td>
+      <td class="px-6 py-4 whitespace-nowrap">
+        <a href="/account-detail.html?address=${balance.token_address}" 
+           class="text-sm text-blue-600 hover:text-blue-900 font-mono">
+          ${truncateAddress(balance.token_address)}
+        </a>
+        <button onclick="copyToClipboard('${balance.token_address}')" 
+                class="ml-2 text-gray-400 hover:text-gray-600">
+          <svg class="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" 
+                  d="M8 16H6a2 2 0 01-2-2V6a2 2 0 012-2h8a2 2 0 012 2v2m-6 12h8a2 2 0 002-2v-8a2 2 0 00-2-2h-8a2 2 0 00-2 2v8a2 2 0 002 2z" />
+          </svg>
+        </button>
+      </td>
+      <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
+        Block ${formatNumber(balance.last_updated_block)}
+      </td>
+    `;
+    
+    tableBody.appendChild(row);
+  });
+  
+  hideTokenBalancesLoading();
+  showTokenBalancesContent();
+}
+
+// Format token balance based on decimals
+function formatTokenBalance(balance, decimals) {
+  if (!balance || balance === "0") return "0";
+  
+  const dec = decimals || 18;
+  const divisor = Math.pow(10, dec);
+  const formatted = parseFloat(balance) / divisor;
+  
+  if (formatted < 0.0001) {
+    return "<0.0001";
+  } else if (formatted < 1) {
+    return formatted.toFixed(6);
+  } else if (formatted < 1000) {
+    return formatted.toFixed(4);
+  } else {
+    return formatNumber(Math.floor(formatted));
+  }
+}
+
+// Token balances UI state functions
+function showTokenBalancesLoading() {
+  document.getElementById("token-balances-loading").classList.remove("hidden");
+  document.getElementById("token-balances-content").classList.add("hidden");
+  document.getElementById("no-token-balances").classList.add("hidden");
+}
+
+function hideTokenBalancesLoading() {
+  document.getElementById("token-balances-loading").classList.add("hidden");
+}
+
+function showTokenBalancesContent() {
+  document.getElementById("token-balances-content").classList.remove("hidden");
+  document.getElementById("no-token-balances").classList.add("hidden");
+}
+
+function showNoTokenBalances() {
+  hideTokenBalancesLoading();
+  document.getElementById("token-balances-content").classList.add("hidden");
+  document.getElementById("no-token-balances").classList.remove("hidden");
+}
+
+// Copy to clipboard function (if not already exists)
+function copyToClipboard(text) {
+  navigator.clipboard.writeText(text).then(function() {
+    // Could add a toast notification here
+    console.log('Copied to clipboard:', text);
+  }).catch(function(err) {
+    console.error('Could not copy text: ', err);
+  });
 }
 
 function hideContent() {

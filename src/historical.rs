@@ -38,11 +38,8 @@ impl HistoricalTransactionService {
         }
 
         // Try to get from database cache first
-        if let Some(cached_count) = self.db.get_cached_historical_count(start_block).await? {
-            info!(
-                "Found cached historical count for block {}: {}",
-                start_block, cached_count
-            );
+        if let Some(cached_count) = self.db.get_cached_historical_count().await? {
+            info!("Found cached historical count: {}", cached_count);
             if let Ok(mut guard) = self.cached_historical_count.write() {
                 *guard = Some(cached_count);
             }
@@ -53,7 +50,7 @@ impl HistoricalTransactionService {
         match self.fetch_from_bigquery(start_block).await {
             Ok(count) => {
                 // Save to cache for future use
-                self.db.cache_historical_count(start_block, count).await?;
+                self.db.update_historical_transaction_count(count).await?;
                 if let Ok(mut guard) = self.cached_historical_count.write() {
                     *guard = Some(count);
                 }

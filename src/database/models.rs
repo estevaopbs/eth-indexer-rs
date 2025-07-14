@@ -209,16 +209,33 @@ pub struct TokenTransfer {
     pub token_id: Option<String>, // For NFTs
 }
 
-/// Withdrawal data structure (Shanghai fork)
+/// Token information structure
 #[derive(Debug, Clone, FromRow, Serialize, Deserialize)]
-pub struct Withdrawal {
+pub struct Token {
+    pub address: String,
+    pub name: Option<String>,
+    pub symbol: Option<String>,
+    pub decimals: Option<u8>,
+    pub token_type: String, // ERC20, ERC721, ERC1155
+    pub first_seen_block: i64,
+    pub last_seen_block: i64,
+    pub total_transfers: i64,
+    pub created_at: Option<String>,
+    pub updated_at: Option<String>,
+}
+
+/// Token balance structure for storing account token balances
+#[derive(Debug, Clone, FromRow, Serialize, Deserialize)]
+pub struct TokenBalance {
     #[sqlx(default)]
     pub id: Option<i64>,
+    pub account_address: String,
+    pub token_address: String,
+    pub balance: String,
     pub block_number: i64,
-    pub withdrawal_index: i64,
-    pub validator_index: i64,
-    pub address: String,
-    pub amount: String, // Amount in Gwei as string
+    pub last_updated_block: i64,
+    pub created_at: Option<String>,
+    pub updated_at: Option<String>,
 }
 
 /// Stats structure for API responses
@@ -229,7 +246,7 @@ pub struct IndexerStats {
     pub total_transactions: i64,
     pub total_transactions_declared: i64,
     pub total_transactions_indexed: i64,
-    pub real_transactions_indexed: i64,  // Only transactions from start_block onwards
+    pub real_transactions_indexed: i64, // Only transactions from start_block onwards
     pub total_blockchain_transactions: i64, // Historical + indexed transactions
     pub total_accounts: i64,
     pub indexer_status: String,
@@ -447,4 +464,17 @@ impl BlockResponse {
 
         Some(total_priority_fees.to_string())
     }
+}
+
+/// Withdrawal data structure (EIP-4895 - Beacon chain push withdrawals)
+#[derive(Debug, Clone, FromRow, Serialize, Deserialize)]
+pub struct Withdrawal {
+    #[sqlx(default)]
+    pub id: Option<i64>,
+    pub block_number: i64,
+    pub withdrawal_index: i64,
+    pub validator_index: i64,
+    pub address: String,
+    pub amount: String,
+    pub created_at: Option<String>,
 }

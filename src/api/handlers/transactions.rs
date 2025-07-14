@@ -95,3 +95,64 @@ pub async fn get_live_transactions(Extension(app): Extension<Arc<App>>) -> Json<
         "count": txs.len()
     }))
 }
+
+/// Get token transfers for a specific transaction
+pub async fn get_transaction_token_transfers(
+    Path(hash): Path<String>,
+    Extension(app): Extension<Arc<App>>,
+) -> Json<serde_json::Value> {
+    let db = &app.db;
+
+    match db.get_token_transfers_by_transaction_hash(&hash).await {
+        Ok(transfers) => {
+            if transfers.is_empty() {
+                Json(json!({
+                    "transaction_hash": hash,
+                    "token_transfers": [],
+                    "count": 0
+                }))
+            } else {
+                // Get token info for each transfer
+                let mut enhanced_transfers = Vec::new();
+                
+                for transfer in transfers {
+                    let token_info = db.get_token_by_address(&transfer.token_address)
+                        .await
+                        .unwrap_or(None);
+                    
+                    let enhanced_transfer = json!({
+                        "id": transfer.id,
+                        "transaction_hash": transfer.transaction_hash,
+                        "token_address": transfer.token_address,
+                        "from_address": transfer.from_address,
+                        "to_address": transfer.to_address,
+                        "amount": transfer.amount,
+                        "block_number": transfer.block_number,
+                        "token_type": transfer.token_type,
+                        "token_id": transfer.token_id,
+                        "token": token_info.map(|token| json!({
+                            "name": token.name,
+                            "symbol": token.symbol,
+                            "decimals": token.decimals
+                        }))
+                    });
+                    
+                    enhanced_transfers.push(enhanced_transfer);
+                }
+                
+                Json(json!({
+                    "transaction_hash": hash,
+                    "token_transfers": enhanced_transfers,
+                    "count": enhanced_transfers.len()
+                }))
+            }
+        }
+        Err(e) => {
+            tracing::error!("Failed to get token transfers for transaction {}: {}", hash, e);
+            Json(json!({
+                "error": "Failed to get token transfers",
+                "transaction_hash": hash
+            }))
+        }
+    }
+}

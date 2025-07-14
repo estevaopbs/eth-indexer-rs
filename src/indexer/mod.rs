@@ -1,7 +1,13 @@
 mod block_processor;
 mod transaction_processor;
 
-use crate::{beacon::BeaconClient, config::AppConfig, database::DatabaseService, rpc::RpcClient};
+use crate::{
+    beacon::BeaconClient, 
+    config::AppConfig, 
+    database::DatabaseService, 
+    rpc::RpcClient,
+    token_service::TokenService,
+};
 use anyhow::Result;
 use std::sync::{
     atomic::{AtomicBool, AtomicI64, Ordering},
@@ -37,6 +43,34 @@ impl IndexerService {
         config: AppConfig,
     ) -> Self {
         let tx_processor = TransactionProcessor::new(db.clone(), rpc.clone());
+        let block_processor = BlockProcessor::new(db.clone(), rpc.clone(), beacon.clone(), tx_processor.clone());
+
+        Self {
+            db,
+            rpc,
+            beacon,
+            config,
+            is_running: Arc::new(AtomicBool::new(false)),
+            block_processor,
+            tx_processor,
+            next_block_to_fetch: Arc::new(AtomicI64::new(0)),
+            latest_network_block: Arc::new(AtomicI64::new(0)),
+        }
+    }
+
+    /// Create a new indexer service with token service support
+    pub fn with_token_service(
+        db: Arc<DatabaseService>,
+        rpc: Arc<RpcClient>,
+        beacon: Arc<BeaconClient>,
+        token_service: Arc<TokenService>,
+        config: AppConfig,
+    ) -> Self {
+        let tx_processor = TransactionProcessor::with_token_service(
+            db.clone(), 
+            rpc.clone(), 
+            token_service
+        );
         let block_processor = BlockProcessor::new(db.clone(), rpc.clone(), beacon.clone(), tx_processor.clone());
 
         Self {

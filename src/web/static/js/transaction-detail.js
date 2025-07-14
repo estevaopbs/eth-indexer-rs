@@ -83,6 +83,7 @@ async function loadTransactionDetails(txHash) {
     
     const data = await response.json();
     displayTransactionDetails(data.transaction, data.logs || []);
+    loadTokenTransfers(txHash);
     
   } catch (error) {
     console.error("Error loading transaction details:", error);
@@ -313,6 +314,149 @@ function showContent() {
 
 function hideContent() {
   document.getElementById("transaction-content").classList.add("hidden");
+}
+
+// Load token transfers for the transaction
+async function loadTokenTransfers(txHash) {
+  showTokenTransfersLoading();
+  
+  try {
+    const response = await fetch(`${API_BASE}/transactions/${txHash}/token-transfers`);
+    
+    if (!response.ok) {
+      throw new Error(`API returned ${response.status}`);
+    }
+    
+    const data = await response.json();
+    displayTokenTransfers(data.token_transfers || []);
+    
+  } catch (error) {
+    console.error("Error loading token transfers:", error);
+    showNoTokenTransfers();
+  }
+}
+
+// Display token transfers
+function displayTokenTransfers(transfers) {
+  const tableBody = document.getElementById("token-transfers-table");
+  
+  if (!transfers || transfers.length === 0) {
+    showNoTokenTransfers();
+    return;
+  }
+  
+  tableBody.innerHTML = "";
+  
+  transfers.forEach(transfer => {
+    const row = document.createElement("tr");
+    row.className = "hover:bg-gray-50";
+    
+    // Format token info
+    const tokenName = transfer.token?.name || "Unknown Token";
+    const tokenSymbol = transfer.token?.symbol || "???";
+    const decimals = transfer.token?.decimals || 18;
+    
+    // Format amount
+    const formattedAmount = formatTokenAmount(transfer.amount, decimals);
+    
+    row.innerHTML = `
+      <td class="px-6 py-4 whitespace-nowrap">
+        <div class="text-sm font-medium text-gray-900">${tokenName}</div>
+        <div class="text-sm text-gray-500">${tokenSymbol}</div>
+        <div class="text-xs text-gray-400 font-mono">
+          <a href="/account-detail.html?address=${transfer.token_address}" 
+             class="text-blue-600 hover:text-blue-900">
+            ${truncateAddress(transfer.token_address)}
+          </a>
+        </div>
+      </td>
+      <td class="px-6 py-4 whitespace-nowrap">
+        <a href="/account-detail.html?address=${transfer.from_address}" 
+           class="text-sm text-blue-600 hover:text-blue-900 font-mono">
+          ${truncateAddress(transfer.from_address)}
+        </a>
+        <button onclick="copyToClipboard('${transfer.from_address}')" 
+                class="ml-2 text-gray-400 hover:text-gray-600">
+          <svg class="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" 
+                  d="M8 16H6a2 2 0 01-2-2V6a2 2 0 012-2h8a2 2 0 012 2v2m-6 12h8a2 2 0 002-2v-8a2 2 0 00-2-2h-8a2 2 0 00-2 2v8a2 2 0 002 2z" />
+          </svg>
+        </button>
+      </td>
+      <td class="px-6 py-4 whitespace-nowrap">
+        <a href="/account-detail.html?address=${transfer.to_address}" 
+           class="text-sm text-blue-600 hover:text-blue-900 font-mono">
+          ${truncateAddress(transfer.to_address)}
+        </a>
+        <button onclick="copyToClipboard('${transfer.to_address}')" 
+                class="ml-2 text-gray-400 hover:text-gray-600">
+          <svg class="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" 
+                  d="M8 16H6a2 2 0 01-2-2V6a2 2 0 012-2h8a2 2 0 012 2v2m-6 12h8a2 2 0 002-2v-8a2 2 0 00-2-2h-8a2 2 0 00-2 2v8a2 2 0 002 2z" />
+          </svg>
+        </button>
+      </td>
+      <td class="px-6 py-4 whitespace-nowrap">
+        <span class="text-sm font-medium text-gray-900">${formattedAmount} ${tokenSymbol}</span>
+      </td>
+    `;
+    
+    tableBody.appendChild(row);
+  });
+  
+  hideTokenTransfersLoading();
+  showTokenTransfersContent();
+}
+
+// Format token amount based on decimals
+function formatTokenAmount(amount, decimals) {
+  if (!amount || amount === "0") return "0";
+  
+  const dec = decimals || 18;
+  const divisor = Math.pow(10, dec);
+  const formatted = parseFloat(amount) / divisor;
+  
+  if (formatted < 0.0001) {
+    return "<0.0001";
+  } else if (formatted < 1) {
+    return formatted.toFixed(6);
+  } else if (formatted < 1000) {
+    return formatted.toFixed(4);
+  } else {
+    return formatNumber(Math.floor(formatted));
+  }
+}
+
+// Token transfers UI state functions
+function showTokenTransfersLoading() {
+  document.getElementById("token-transfers-loading").classList.remove("hidden");
+  document.getElementById("token-transfers-content").classList.add("hidden");
+  document.getElementById("no-token-transfers").classList.add("hidden");
+}
+
+function hideTokenTransfersLoading() {
+  document.getElementById("token-transfers-loading").classList.add("hidden");
+}
+
+function showTokenTransfersContent() {
+  document.getElementById("token-transfers-content").classList.remove("hidden");
+  document.getElementById("no-token-transfers").classList.add("hidden");
+}
+
+function showNoTokenTransfers() {
+  hideTokenTransfersLoading();
+  document.getElementById("token-transfers-content").classList.add("hidden");
+  document.getElementById("no-token-transfers").classList.remove("hidden");
+}
+
+// Copy to clipboard function (if not already exists)
+function copyToClipboard(text) {
+  navigator.clipboard.writeText(text).then(function() {
+    // Could add a toast notification here
+    console.log('Copied to clipboard:', text);
+  }).catch(function(err) {
+    console.error('Could not copy text: ', err);
+  });
 }
 
 // Initialize page

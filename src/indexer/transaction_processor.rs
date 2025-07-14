@@ -1,12 +1,13 @@
 use crate::{
     database::{Account, DatabaseService, Log, TokenTransfer, Transaction},
     rpc::RpcClient,
+    token_service::TokenService,
 };
 use anyhow::{Context, Result};
 use ethers::core::types::{Log as EthLog, Transaction as EthTransaction, TransactionReceipt, H160};
 use std::{collections::HashMap, str::FromStr, sync::Arc};
 use tokio::sync::RwLock;
-use tracing::{debug, error, trace};
+use tracing::{debug, error, info, trace, warn};
 
 // ERC-20 Transfer event topic
 const TRANSFER_TOPIC: &str = "0xddf252ad1be2c89b69c2b068fc378daa952ba7f163c4a11628f55a4df523b3ef";
@@ -16,6 +17,7 @@ const TRANSFER_TOPIC: &str = "0xddf252ad1be2c89b69c2b068fc378daa952ba7f163c4a116
 pub struct TransactionProcessor {
     db: Arc<DatabaseService>,
     rpc: Arc<RpcClient>,
+    token_service: Option<Arc<TokenService>>,
     account_cache: Arc<RwLock<HashMap<String, Option<Account>>>>,
 }
 
@@ -25,6 +27,21 @@ impl TransactionProcessor {
         Self {
             db,
             rpc,
+            token_service: None,
+            account_cache: Arc::new(RwLock::new(HashMap::new())),
+        }
+    }
+
+    /// Create a new transaction processor with token service
+    pub fn with_token_service(
+        db: Arc<DatabaseService>,
+        rpc: Arc<RpcClient>,
+        token_service: Arc<TokenService>,
+    ) -> Self {
+        Self {
+            db,
+            rpc,
+            token_service: Some(token_service),
             account_cache: Arc::new(RwLock::new(HashMap::new())),
         }
     }
@@ -197,6 +214,7 @@ impl TransactionProcessor {
 
         // Second pass: batch process accounts for unique addresses only
         let mut all_accounts = Vec::new();
+        info!("Processing {} unique addresses for account creation", unique_addresses.len());
         for address in unique_addresses {
             // Use the first transaction's block number as reference
             if let Some((first_tx, _)) = transactions_with_receipts.first() {
@@ -209,6 +227,7 @@ impl TransactionProcessor {
                 }
             }
         }
+        info!("Prepared {} accounts for batch insertion", all_accounts.len());
 
         Ok((
             all_transactions,
@@ -477,28 +496,37 @@ impl TransactionProcessor {
     /// Prepare account for batch insertion
     async fn prepare_account(&self, address: &str, block_number: i64) -> Result<Account> {
         // Get current balance from RPC
-        let balance = self
+        let balance = match self
             .rpc
             .get_balance(address, Some(block_number as u64))
             .await
-            .unwrap_or_default();
+        {
+            Ok(bal) => bal.to_string(),
+            Err(e) => {
+                info!("Failed to get balance for {}: {}, using 0", address, e);
+                "0".to_string()
+            }
+        };
 
         // Get existing account or create new one using cache
         let existing_account = self.get_account_cached(address).await?;
 
         let account = if let Some(mut existing) = existing_account {
-            existing.balance = balance.to_string();
+            existing.balance = balance;
             existing.transaction_count += 1;
             existing.last_seen_block = block_number;
+            info!("Updated existing account: {}", address);
             existing
         } else {
-            Account {
+            let new_account = Account {
                 address: address.to_string(),
-                balance: balance.to_string(),
+                balance,
                 transaction_count: 1,
                 first_seen_block: block_number,
                 last_seen_block: block_number,
-            }
+            };
+            info!("Created new account: {}", address);
+            new_account
         };
 
         Ok(account)
@@ -530,5 +558,67 @@ impl TransactionProcessor {
     pub async fn clear_account_cache(&self) {
         let mut cache = self.account_cache.write().await;
         cache.clear();
+    }
+
+    /// Process token transfers in a block and update balances
+    pub async fn process_token_transfers_with_balances(
+        &self,
+        transfers: &[TokenTransfer],
+        block_number: i64,
+    ) -> Result<()> {
+        if transfers.is_empty() {
+            info!("No token transfers to process for block {}", block_number);
+            return Ok(());
+        }
+
+        if self.token_service.is_none() {
+            warn!("Token service not available, skipping token balance processing");
+            return Ok(());
+        }
+
+        info!("Processing {} token transfers for block {} with balance updates", transfers.len(), block_number);
+        let token_service = self.token_service.as_ref().unwrap();
+        let mut token_updates = Vec::new();
+
+        // Discover new tokens and collect balance updates
+        for (i, transfer) in transfers.iter().enumerate() {
+            info!("Processing transfer {}/{}: {} from {} to {} (amount: {})", 
+                  i + 1, transfers.len(), transfer.token_address, 
+                  transfer.from_address, transfer.to_address, transfer.amount);
+
+            // Discover token if not seen before
+            if let Err(e) = token_service
+                .discover_token(&transfer.token_address, block_number)
+                .await
+            {
+                error!(
+                    "Failed to discover token {}: {}",
+                    transfer.token_address, e
+                );
+            } else {
+                info!("Token discovery completed for {}", transfer.token_address);
+            }
+
+            // Collect accounts that need balance updates
+            token_updates.push((
+                transfer.token_address.clone(),
+                transfer.from_address.clone(),
+                transfer.to_address.clone(),
+            ));
+        }
+
+        info!("Collected {} token balance updates for block {}", token_updates.len(), block_number);
+
+        // Update token balances
+        if let Err(e) = token_service
+            .update_balances_for_transfers(&token_updates, block_number)
+            .await
+        {
+            error!("Failed to update token balances: {}", e);
+        } else {
+            info!("Successfully updated token balances for {} transfers in block {}", token_updates.len(), block_number);
+        }
+
+        Ok(())
     }
 }

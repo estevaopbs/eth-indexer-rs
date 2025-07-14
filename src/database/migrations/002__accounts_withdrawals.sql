@@ -38,3 +38,8 @@ CREATE INDEX IF NOT EXISTS idx_withdrawals_block ON withdrawals(block_number);
 CREATE INDEX IF NOT EXISTS idx_withdrawals_address ON withdrawals(address);
 CREATE INDEX IF NOT EXISTS idx_withdrawals_validator ON withdrawals(validator_index);
 CREATE INDEX IF NOT EXISTS idx_withdrawals_index ON withdrawals(withdrawal_index);
+
+-- Add unique constraint for withdrawals to support ON CONFLICT clause
+-- This ensures that each withdrawal is unique by block_number and withdrawal_index
+CREATE UNIQUE INDEX IF NOT EXISTS idx_withdrawals_block_withdrawal 
+ON withdrawals(block_number, withdrawal_index);

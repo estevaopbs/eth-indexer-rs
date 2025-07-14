@@ -6,6 +6,7 @@ pub mod historical; // Add historical module
 pub mod indexer;
 pub mod network_stats; // Add network stats module
 pub mod rpc;
+pub mod token_service; // Add token service module
 pub mod web;
 
 use anyhow::Result;
@@ -18,6 +19,7 @@ use std::sync::Arc;
 use tracing::{error, info};
 use crate::historical::HistoricalTransactionService;
 use crate::network_stats::NetworkStatsService;
+use crate::token_service::TokenService;
 
 /// Represents the core application with all its services
 pub struct App {
@@ -28,6 +30,7 @@ pub struct App {
     pub indexer: Arc<IndexerService>,
     pub historical: Arc<HistoricalTransactionService>,
     pub network_stats: Arc<NetworkStatsService>,
+    pub token_service: Arc<TokenService>,
 }
 
 impl App {
@@ -52,14 +55,19 @@ impl App {
         let beacon = Arc::new(BeaconClient::new(&config.beacon_rpc_url));
         info!("Beacon client connected to {}", config.beacon_rpc_url);
 
-        // Initialize indexer service
-        let indexer = Arc::new(IndexerService::new(
+        // Initialize token service
+        let token_service = Arc::new(TokenService::new(db.clone(), rpc.clone()));
+        info!("Token service initialized");
+
+        // Initialize indexer service with token service
+        let indexer = Arc::new(IndexerService::with_token_service(
             db.clone(),
             rpc.clone(),
             beacon.clone(),
+            token_service.clone(),
             config.clone(),
         ));
-        info!("Indexer service initialized");
+        info!("Indexer service initialized with token support");
 
         // Initialize historical transaction service
         let historical = Arc::new(HistoricalTransactionService::new(db.clone(), config.clone()));
@@ -90,6 +98,7 @@ impl App {
             indexer,
             historical,
             network_stats,
+            token_service,
         })
     }
 

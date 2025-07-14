@@ -63,6 +63,7 @@ impl BlockProcessor {
                     validator_index: withdrawal.validator_index.as_u64() as i64,
                     address: format!("{:?}", withdrawal.address),
                     amount: withdrawal.amount.to_string(), // Amount in Gwei
+                    created_at: None,
                 };
 
                 if let Err(e) = self.db.insert_withdrawal(&withdrawal_data).await {
@@ -109,6 +110,15 @@ impl BlockProcessor {
                 .await
             {
                 Ok((all_transactions, all_logs, all_token_transfers, all_accounts)) => {
+                    info!(
+                        "Block #{} collected data: {} transactions, {} logs, {} token_transfers, {} accounts",
+                        block_number,
+                        all_transactions.len(),
+                        all_logs.len(),
+                        all_token_transfers.len(),
+                        all_accounts.len()
+                    );
+
                     // Batch insert all data at once for maximum performance
                     if !all_transactions.is_empty() {
                         if let Err(e) = self.db.insert_transactions_batch(&all_transactions).await {
@@ -130,12 +140,29 @@ impl BlockProcessor {
                         {
                             error!("Failed to batch insert token transfers: {}", e);
                         }
+
+                        // Process token transfers for token discovery and balance updates
+                        if let Err(e) = self
+                            .tx_processor
+                            .process_token_transfers_with_balances(
+                                &all_token_transfers,
+                                block_number as i64,
+                            )
+                            .await
+                        {
+                            error!("Failed to process token transfers for balances: {}", e);
+                        }
                     }
 
                     if !all_accounts.is_empty() {
+                        info!("Inserting {} accounts from block #{}", all_accounts.len(), block_number);
                         if let Err(e) = self.db.insert_accounts_batch(&all_accounts).await {
                             error!("Failed to batch insert accounts: {}", e);
+                        } else {
+                            info!("Successfully inserted {} accounts from block #{}", all_accounts.len(), block_number);
                         }
+                    } else {
+                        info!("No accounts to insert for block #{}", block_number);
                     }
 
                     info!("Block #{} performance: block_fetch={}ms, receipts_fetch={}ms, batch_db={}ms, total={}ms", 

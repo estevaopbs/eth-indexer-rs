@@ -93,65 +93,61 @@ impl AppConfig {
         Ok(config)
     }
 
-    /// Resolve the start_block using database configuration and environment variables
-    /// Returns the final start_block value to use, checking database first, then env vars
-    /// If start_block is -1, it will be resolved to the latest network block
+    /// Resolve the start_block using database cache and environment variables
+    /// Database cache takes precedence. If cache exists, env values are ignored (except for warnings).
+    /// Negative values in env represent relative positions: -1=latest, -2=second latest, etc.
     pub async fn resolve_start_block(&mut self, db: &crate::database::DatabaseService, rpc: Option<&crate::rpc::RpcClient>) -> Result<(), ConfigError> {
         use tracing::{info, warn};
 
         // Get start_block from environment/config file
         let env_start_block = self.start_block;
 
-        // Get start_block from database
-        let db_start_block = db.get_start_block().await
-            .map_err(|e| ConfigError::InvalidValue(format!("Failed to get start_block from database: {}", e)))?
-            .map(|v| v as i64);
+        // Check if database cache already exists
+        let db_cache = db.get_start_block_cache().await
+            .map_err(|e| ConfigError::InvalidValue(format!("Failed to get start_block cache from database: {}", e)))?;
 
-        match (db_start_block, env_start_block) {
-            (Some(db_value), Some(env_value)) => {
-                // Both database and environment have values
-                if env_value == -1 {
-                    // Special case: user wants to start from latest block
-                    let resolved_block = self.resolve_latest_block(rpc).await?;
-                    info!("Resolved START_BLOCK=-1 to latest network block: {}", resolved_block);
-                    db.set_start_block(resolved_block as u64).await
-                        .map_err(|e| ConfigError::InvalidValue(format!("Failed to save resolved start_block to database: {}", e)))?;
-                    self.start_block = Some(resolved_block);
-                } else if db_value != env_value {
-                    warn!("Start block mismatch! Database has {}, environment/config has {}. Using database value.", db_value, env_value);
-                    self.start_block = Some(db_value);
-                } else {
-                    info!("Start block consistent: {} (database and environment match)", db_value);
-                    self.start_block = Some(db_value);
+        match db_cache {
+            Some((db_start_block, _)) => {
+                // Database cache exists - use it and ignore env (except for warnings)
+                info!("Using start block from database cache: {}", db_start_block);
+                
+                if let Some(env_value) = env_start_block {
+                    if env_value >= 0 && env_value != db_start_block as i64 {
+                        warn!("Start block mismatch! Database cache has {}, environment has {}. Using database value.", db_start_block, env_value);
+                    }
+                    // Note: Negative env values are ignored when cache exists (no warning)
                 }
+                
+                self.start_block = Some(db_start_block as i64);
             },
-            (Some(db_value), None) => {
-                // Only database has value
-                info!("Using start block from database: {}", db_value);
-                self.start_block = Some(db_value);
-            },
-            (None, Some(env_value)) => {
-                // Only environment has value
-                if env_value == -1 {
-                    // Special case: user wants to start from latest block
-                    let resolved_block = self.resolve_latest_block(rpc).await?;
-                    info!("Resolved START_BLOCK=-1 to latest network block: {}", resolved_block);
-                    db.set_start_block(resolved_block as u64).await
-                        .map_err(|e| ConfigError::InvalidValue(format!("Failed to save resolved start_block to database: {}", e)))?;
-                    self.start_block = Some(resolved_block);
-                } else {
-                    info!("Saving start block from environment to database: {}", env_value);
-                    db.set_start_block(env_value as u64).await
-                        .map_err(|e| ConfigError::InvalidValue(format!("Failed to save start_block to database: {}", e)))?;
-                    self.start_block = Some(env_value);
-                }
-            },
-            (None, None) => {
-                // Neither has value, use default of 0
-                info!("No start block configured, using default: 0");
-                db.set_start_block(0).await
-                    .map_err(|e| ConfigError::InvalidValue(format!("Failed to save default start_block to database: {}", e)))?;
-                self.start_block = Some(0);
+            None => {
+                // No database cache - initialize based on environment
+                let resolved_start_block = match env_start_block {
+                    Some(env_value) if env_value < 0 => {
+                        // Negative value: resolve relative to latest block
+                        let latest_block = self.resolve_latest_block(rpc).await?;
+                        let relative_block = latest_block + env_value; // env_value is negative
+                        let final_block = if relative_block < 0 { 0 } else { relative_block };
+                        info!("Resolved START_BLOCK={} to block: {} (latest was {})", env_value, final_block, latest_block);
+                        final_block as u64
+                    },
+                    Some(env_value) if env_value >= 0 => {
+                        // Positive value: use as-is
+                        info!("Using start block from environment: {}", env_value);
+                        env_value as u64
+                    },
+                    _ => {
+                        // No environment value or invalid: use default of 0
+                        info!("No start block configured, using default: 0");
+                        0
+                    }
+                };
+
+                // Initialize the database cache
+                db.init_start_block_cache(resolved_start_block).await
+                    .map_err(|e| ConfigError::InvalidValue(format!("Failed to initialize start_block cache: {}", e)))?;
+                
+                self.start_block = Some(resolved_start_block as i64);
             }
         }
 
