@@ -63,8 +63,10 @@ impl DatabaseService {
             INSERT INTO blocks (
                 number, hash, parent_hash, timestamp, gas_used, gas_limit, transaction_count,
                 miner, total_difficulty, size_bytes, base_fee_per_gas, extra_data, state_root,
-                nonce, withdrawals_root, blob_gas_used, excess_blob_gas, withdrawal_count
-            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                nonce, withdrawals_root, blob_gas_used, excess_blob_gas, withdrawal_count,
+                slot, proposer_index, epoch, slot_root, parent_root, beacon_deposit_count,
+                graffiti, randao_reveal, randao_mix
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             ON CONFLICT(number) DO UPDATE SET
                 hash = excluded.hash,
                 parent_hash = excluded.parent_hash,
@@ -82,7 +84,16 @@ impl DatabaseService {
                 withdrawals_root = excluded.withdrawals_root,
                 blob_gas_used = excluded.blob_gas_used,
                 excess_blob_gas = excluded.excess_blob_gas,
-                withdrawal_count = excluded.withdrawal_count
+                withdrawal_count = excluded.withdrawal_count,
+                slot = excluded.slot,
+                proposer_index = excluded.proposer_index,
+                epoch = excluded.epoch,
+                slot_root = excluded.slot_root,
+                parent_root = excluded.parent_root,
+                beacon_deposit_count = excluded.beacon_deposit_count,
+                graffiti = excluded.graffiti,
+                randao_reveal = excluded.randao_reveal,
+                randao_mix = excluded.randao_mix
             "#,
         )
         .bind(block.number)
@@ -103,6 +114,15 @@ impl DatabaseService {
         .bind(block.blob_gas_used)
         .bind(block.excess_blob_gas)
         .bind(block.withdrawal_count)
+        .bind(block.slot)
+        .bind(block.proposer_index)
+        .bind(block.epoch)
+        .bind(&block.slot_root)
+        .bind(&block.parent_root)
+        .bind(block.beacon_deposit_count)
+        .bind(&block.graffiti)
+        .bind(&block.randao_reveal)
+        .bind(&block.randao_mix)
         .execute(&self.pool)
         .await
         .context("Failed to insert block")?;
@@ -199,7 +219,7 @@ impl DatabaseService {
     pub async fn insert_withdrawal(&self, withdrawal: &Withdrawal) -> Result<()> {
         // First check if withdrawal already exists
         let existing = sqlx::query_scalar::<_, i64>(
-            "SELECT COUNT(*) FROM withdrawals WHERE block_number = ? AND withdrawal_index = ?"
+            "SELECT COUNT(*) FROM withdrawals WHERE block_number = ? AND withdrawal_index = ?",
         )
         .bind(withdrawal.block_number)
         .bind(withdrawal.withdrawal_index)
@@ -366,7 +386,11 @@ impl DatabaseService {
     pub async fn get_block_by_number(&self, number: i64) -> Result<Option<Block>> {
         let result = sqlx::query_as::<_, Block>(
             r#"
-            SELECT number, hash, parent_hash, timestamp, gas_used, gas_limit, transaction_count
+            SELECT number, hash, parent_hash, timestamp, gas_used, gas_limit, transaction_count,
+                   miner, total_difficulty, size_bytes, base_fee_per_gas, extra_data, state_root,
+                   nonce, withdrawals_root, blob_gas_used, excess_blob_gas, withdrawal_count,
+                   slot, proposer_index, epoch, slot_root, parent_root, beacon_deposit_count,
+                   graffiti, randao_reveal, randao_mix
             FROM blocks
             WHERE number = ?
             "#,
@@ -383,7 +407,11 @@ impl DatabaseService {
     pub async fn get_block_by_hash(&self, hash: &str) -> Result<Option<Block>> {
         let result = sqlx::query_as::<_, Block>(
             r#"
-            SELECT number, hash, parent_hash, timestamp, gas_used, gas_limit, transaction_count
+            SELECT number, hash, parent_hash, timestamp, gas_used, gas_limit, transaction_count,
+                   miner, total_difficulty, size_bytes, base_fee_per_gas, extra_data, state_root,
+                   nonce, withdrawals_root, blob_gas_used, excess_blob_gas, withdrawal_count,
+                   slot, proposer_index, epoch, slot_root, parent_root, beacon_deposit_count,
+                   graffiti, randao_reveal, randao_mix
             FROM blocks
             WHERE hash = ?
             "#,

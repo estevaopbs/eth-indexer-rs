@@ -25,13 +25,18 @@ pub async fn get_transactions(
         .unwrap_or_default();
 
     let total = db.get_transaction_count().await.unwrap_or(0);
+    let current_page = params.page.unwrap_or(1);
+    let per_page = params.per_page.unwrap_or(10);
+    let total_pages = (total as f64 / per_page as f64).ceil() as u64;
+    let has_next = current_page < total_pages;
 
     Json(json!({
         "transactions": txs,
         "total": total,
-        "page": params.page.unwrap_or(1),
-        "per_page": params.per_page.unwrap_or(10),
-        "pages": (total as f64 / params.limit() as f64).ceil() as u64
+        "page": current_page,
+        "per_page": per_page,
+        "pages": total_pages,
+        "has_next": has_next
     }))
 }
 

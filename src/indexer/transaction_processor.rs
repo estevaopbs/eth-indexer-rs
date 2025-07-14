@@ -22,8 +22,8 @@ pub struct TransactionProcessor {
 impl TransactionProcessor {
     /// Create a new transaction processor
     pub fn new(db: Arc<DatabaseService>, rpc: Arc<RpcClient>) -> Self {
-        Self { 
-            db, 
+        Self {
+            db,
             rpc,
             account_cache: Arc::new(RwLock::new(HashMap::new())),
         }
@@ -64,7 +64,10 @@ impl TransactionProcessor {
 
         if let Some(to_addr) = eth_tx.to {
             let to_address = format!("{:#x}", to_addr);
-            if let Err(e) = self.update_account_balance(&to_address, tx.block_number).await {
+            if let Err(e) = self
+                .update_account_balance(&to_address, tx.block_number)
+                .await
+            {
                 error!("Failed to update to account balance: {}", e);
             }
         }
@@ -74,34 +77,44 @@ impl TransactionProcessor {
     }
 
     /// Get transaction receipts in batch for better performance
-    pub async fn get_transaction_receipts_batch(&self, tx_hashes: &[String]) -> Result<Vec<Option<TransactionReceipt>>> {
+    pub async fn get_transaction_receipts_batch(
+        &self,
+        tx_hashes: &[String],
+    ) -> Result<Vec<Option<TransactionReceipt>>> {
         use futures::future;
-        
+
         // Create semaphore to limit concurrent requests
         let semaphore = Arc::new(tokio::sync::Semaphore::new(50));
-        
+
         // Create tasks for all receipt requests
-        let tasks: Vec<_> = tx_hashes.iter().map(|hash| {
-            let rpc = self.rpc.clone();
-            let hash = hash.clone();
-            let semaphore = semaphore.clone();
-            
-            async move {
-                let _permit = semaphore.acquire().await?;
-                rpc.get_transaction_receipt(&hash).await
-            }
-        }).collect();
-        
+        let tasks: Vec<_> = tx_hashes
+            .iter()
+            .map(|hash| {
+                let rpc = self.rpc.clone();
+                let hash = hash.clone();
+                let semaphore = semaphore.clone();
+
+                async move {
+                    let _permit = semaphore.acquire().await?;
+                    rpc.get_transaction_receipt(&hash).await
+                }
+            })
+            .collect();
+
         // Execute all requests concurrently
         let results = future::try_join_all(tasks).await?;
         Ok(results)
     }
 
     /// Collect transaction data for batch processing
-    pub async fn collect_transaction_data(&self, eth_tx: &EthTransaction, receipt: &TransactionReceipt) -> Result<(Transaction, Vec<Log>, Vec<TokenTransfer>, Vec<Account>)> {
+    pub async fn collect_transaction_data(
+        &self,
+        eth_tx: &EthTransaction,
+        receipt: &TransactionReceipt,
+    ) -> Result<(Transaction, Vec<Log>, Vec<TokenTransfer>, Vec<Account>)> {
         // Convert to our Transaction model
         let tx = self.convert_transaction(eth_tx, receipt)?;
-        
+
         // Collect all data
         let mut logs = Vec::new();
         let mut token_transfers = Vec::new();
@@ -114,8 +127,10 @@ impl TransactionProcessor {
             logs.push(log);
 
             // Check if it's a token transfer
-            if eth_log.topics.len() >= 3 && 
-               format!("0x{}", hex::encode(eth_log.topics[0].as_bytes())) == "0xddf252ad1be2c89b69c2b068fc378daa952ba7f163c4a11628f55a4df523b3ef" {
+            if eth_log.topics.len() >= 3
+                && format!("0x{}", hex::encode(eth_log.topics[0].as_bytes()))
+                    == "0xddf252ad1be2c89b69c2b068fc378daa952ba7f163c4a11628f55a4df523b3ef"
+            {
                 if let Ok(transfer) = self.process_erc20_transfer(&tx, eth_log).await {
                     token_transfers.push(transfer);
                 }
@@ -139,24 +154,29 @@ impl TransactionProcessor {
     }
 
     /// Collect data for multiple transactions efficiently (block-level batch processing)
-    pub async fn collect_block_transaction_data(&self, transactions_with_receipts: &[(EthTransaction, TransactionReceipt)]) -> Result<(Vec<Transaction>, Vec<Log>, Vec<TokenTransfer>, Vec<Account>)> {
+    pub async fn collect_block_transaction_data(
+        &self,
+        transactions_with_receipts: &[(EthTransaction, TransactionReceipt)],
+    ) -> Result<(Vec<Transaction>, Vec<Log>, Vec<TokenTransfer>, Vec<Account>)> {
         let mut all_transactions = Vec::new();
         let mut all_logs = Vec::new();
         let mut all_token_transfers = Vec::new();
         let mut unique_addresses = std::collections::HashSet::new();
-        
+
         // First pass: collect all data without account processing
         for (eth_tx, receipt) in transactions_with_receipts {
             let tx = self.convert_transaction(eth_tx, receipt)?;
-            
+
             // Collect transaction logs
             for eth_log in &receipt.logs {
                 let log = self.convert_log(&tx, eth_log)?;
                 all_logs.push(log);
 
                 // Check if it's a token transfer
-                if eth_log.topics.len() >= 3 && 
-                   format!("0x{}", hex::encode(eth_log.topics[0].as_bytes())) == "0xddf252ad1be2c89b69c2b068fc378daa952ba7f163c4a11628f55a4df523b3ef" {
+                if eth_log.topics.len() >= 3
+                    && format!("0x{}", hex::encode(eth_log.topics[0].as_bytes()))
+                        == "0xddf252ad1be2c89b69c2b068fc378daa952ba7f163c4a11628f55a4df523b3ef"
+                {
                     if let Ok(transfer) = self.process_erc20_transfer(&tx, eth_log).await {
                         all_token_transfers.push(transfer);
                     }
@@ -166,12 +186,12 @@ impl TransactionProcessor {
             // Collect unique addresses
             let from_address = format!("{:#x}", eth_tx.from);
             unique_addresses.insert(from_address);
-            
+
             if let Some(to_addr) = eth_tx.to {
                 let to_address = format!("{:#x}", to_addr);
                 unique_addresses.insert(to_address);
             }
-            
+
             all_transactions.push(tx);
         }
 
@@ -180,14 +200,22 @@ impl TransactionProcessor {
         for address in unique_addresses {
             // Use the first transaction's block number as reference
             if let Some((first_tx, _)) = transactions_with_receipts.first() {
-                let block_number = first_tx.block_number.map(|n| n.as_u64() as i64).unwrap_or(0);
+                let block_number = first_tx
+                    .block_number
+                    .map(|n| n.as_u64() as i64)
+                    .unwrap_or(0);
                 if let Ok(account) = self.prepare_account(&address, block_number).await {
                     all_accounts.push(account);
                 }
             }
         }
 
-        Ok((all_transactions, all_logs, all_token_transfers, all_accounts))
+        Ok((
+            all_transactions,
+            all_logs,
+            all_token_transfers,
+            all_accounts,
+        ))
     }
 
     /// Process individual transaction log
@@ -196,7 +224,11 @@ impl TransactionProcessor {
     }
 
     /// Static version of process_log for use in async tasks
-    async fn process_log_static(db: &Arc<DatabaseService>, tx: &Transaction, eth_log: &EthLog) -> Result<()> {
+    async fn process_log_static(
+        db: &Arc<DatabaseService>,
+        tx: &Transaction,
+        eth_log: &EthLog,
+    ) -> Result<()> {
         // Convert log to our model
         let log = Log {
             id: None,
@@ -226,7 +258,11 @@ impl TransactionProcessor {
     }
 
     /// Static version of process_token_transfer for use in async tasks
-    async fn process_token_transfer_static(db: &Arc<DatabaseService>, log: &Log, eth_log: &EthLog) -> Result<()> {
+    async fn process_token_transfer_static(
+        db: &Arc<DatabaseService>,
+        log: &Log,
+        eth_log: &EthLog,
+    ) -> Result<()> {
         // Extract from and to addresses from topics
         let from_address = if eth_log.topics.len() > 1 {
             let topic = eth_log.topics[1];
@@ -273,7 +309,11 @@ impl TransactionProcessor {
     }
 
     /// Process ERC20 transfer from log
-    async fn process_erc20_transfer(&self, tx: &Transaction, eth_log: &EthLog) -> Result<TokenTransfer> {
+    async fn process_erc20_transfer(
+        &self,
+        tx: &Transaction,
+        eth_log: &EthLog,
+    ) -> Result<TokenTransfer> {
         // Extract from and to addresses from topics
         let from_address = if eth_log.topics.len() > 1 {
             format!("0x{}", hex::encode(&eth_log.topics[1].as_bytes()[12..]))
@@ -476,7 +516,7 @@ impl TransactionProcessor {
 
         // If not in cache, fetch from database
         let account = self.db.get_account_by_address(address).await?;
-        
+
         // Store in cache
         {
             let mut cache = self.account_cache.write().await;

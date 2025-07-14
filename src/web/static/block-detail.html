@@ -1,0 +1,408 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Block Details - ETH Indexer RS</title>
+    <link
+      href="https://cdn.jsdelivr.net/npm/tailwindcss@2.2.19/dist/tailwind.min.css"
+      rel="stylesheet"
+    />
+    <link rel="stylesheet" href="/css/styles.css" />
+  </head>
+  <body>
+    <div class="min-h-screen bg-gray-50">
+      <!-- Navigation -->
+      <nav class="bg-gray-800 text-white shadow-lg">
+        <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+          <div class="flex items-center justify-between h-16">
+            <div class="flex items-center">
+              <div class="flex-shrink-0">
+                <h1 class="text-xl font-bold">ETH Indexer RS</h1>
+              </div>
+              <div class="hidden md:block">
+                <div class="ml-10 flex items-baseline space-x-4">
+                  <a
+                    href="/"
+                    class="px-3 py-2 rounded-md text-sm font-medium text-gray-300 hover:text-white hover:bg-gray-700"
+                    >Dashboard</a
+                  >
+                  <a
+                    href="/blocks.html"
+                    class="px-3 py-2 rounded-md text-sm font-medium text-white bg-gray-900"
+                    >Blocks</a
+                  >
+                  <a
+                    href="/transactions.html"
+                    class="px-3 py-2 rounded-md text-sm font-medium text-gray-300 hover:text-white hover:bg-gray-700"
+                    >Transactions</a
+                  >
+                  <a
+                    href="/accounts.html"
+                    class="px-3 py-2 rounded-md text-sm font-medium text-gray-300 hover:text-white hover:bg-gray-700"
+                    >Accounts</a
+                  >
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </nav>
+
+      <!-- Main Content -->
+      <main class="max-w-7xl mx-auto py-6 px-4 sm:px-6 lg:px-8">
+        <!-- Breadcrumb -->
+        <nav class="flex mb-6" aria-label="Breadcrumb">
+          <ol class="inline-flex items-center space-x-1 md:space-x-3">
+            <li class="inline-flex items-center">
+              <a href="/" class="text-gray-700 hover:text-gray-900"
+                >Dashboard</a
+              >
+            </li>
+            <li>
+              <div class="flex items-center">
+                <svg
+                  class="w-6 h-6 text-gray-400"
+                  fill="currentColor"
+                  viewBox="0 0 20 20"
+                >
+                  <path
+                    fill-rule="evenodd"
+                    d="M7.293 14.707a1 1 0 010-1.414L10.586 10 7.293 6.707a1 1 0 011.414-1.414l4 4a1 1 0 010 1.414l-4 4a1 1 0 01-1.414 0z"
+                    clip-rule="evenodd"
+                  ></path>
+                </svg>
+                <a
+                  href="/blocks.html"
+                  class="ml-1 text-gray-700 hover:text-gray-900 md:ml-2"
+                  >Blocks</a
+                >
+              </div>
+            </li>
+            <li aria-current="page">
+              <div class="flex items-center">
+                <svg
+                  class="w-6 h-6 text-gray-400"
+                  fill="currentColor"
+                  viewBox="0 0 20 20"
+                >
+                  <path
+                    fill-rule="evenodd"
+                    d="M7.293 14.707a1 1 0 010-1.414L10.586 10 7.293 6.707a1 1 0 011.414-1.414l4 4a1 1 0 010 1.414l-4 4a1 1 0 01-1.414 0z"
+                    clip-rule="evenodd"
+                  ></path>
+                </svg>
+                <span class="ml-1 text-gray-500 md:ml-2" id="breadcrumb-block"
+                  >Block ...</span
+                >
+              </div>
+            </li>
+          </ol>
+        </nav>
+
+        <!-- Page Header -->
+        <div class="mb-8">
+          <h2 class="text-3xl font-bold text-gray-900" id="block-title">
+            Block Details
+          </h2>
+          <p class="mt-2 text-gray-600">
+            Detailed information about this Ethereum block
+          </p>
+        </div>
+
+        <!-- Loading State -->
+        <div id="loading-state" class="flex items-center justify-center p-8">
+          <div
+            class="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-600"
+          ></div>
+          <p class="ml-4 text-gray-600">Loading block details...</p>
+        </div>
+
+        <!-- Error State -->
+        <div id="error-state" class="hidden p-6 text-center">
+          <div
+            class="mx-auto flex items-center justify-center h-12 w-12 rounded-full bg-red-100"
+          >
+            <svg
+              class="h-6 w-6 text-red-600"
+              fill="none"
+              viewBox="0 0 24 24"
+              stroke="currentColor"
+            >
+              <path
+                stroke-linecap="round"
+                stroke-linejoin="round"
+                stroke-width="2"
+                d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-2.5L13.732 4c-.77-.833-1.964-.833-2.732 0L3.082 16.5c-.77.833.192 2.5 1.732 2.5z"
+              />
+            </svg>
+          </div>
+          <h3 class="mt-2 text-sm font-medium text-gray-900">
+            Block not found
+          </h3>
+          <p class="mt-1 text-sm text-gray-500">
+            The requested block could not be found.
+          </p>
+          <div class="mt-6">
+            <button
+              id="retry-btn"
+              class="inline-flex items-center px-4 py-2 border border-transparent shadow-sm text-sm font-medium rounded-md text-white bg-blue-600 hover:bg-blue-700"
+            >
+              Try Again
+            </button>
+          </div>
+        </div>
+
+        <!-- Block Content -->
+        <div id="block-content" class="hidden">
+          <!-- Block Summary Cards -->
+          <div
+            class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6 mb-8"
+          >
+            <div class="bg-white rounded-lg shadow-md p-6">
+              <div class="flex items-center">
+                <div class="flex-shrink-0">
+                  <div class="bg-blue-100 p-3 rounded-full">
+                    <svg
+                      class="h-6 w-6 text-blue-600"
+                      fill="none"
+                      viewBox="0 0 24 24"
+                      stroke="currentColor"
+                    >
+                      <path
+                        stroke-linecap="round"
+                        stroke-linejoin="round"
+                        stroke-width="2"
+                        d="M19 11H5m14 0a2 2 0 012 2v6a2 2 0 01-2 2H5a2 2 0 01-2-2v-6a2 2 0 012-2m14 0V9a2 2 0 00-2-2M5 11V9a2 2 0 012-2m0 0V5a2 2 0 012-2h6a2 2 0 012 2v2M7 7h10"
+                      />
+                    </svg>
+                  </div>
+                </div>
+                <div class="ml-5 w-0 flex-1">
+                  <dl>
+                    <dt class="text-sm font-medium text-gray-500 truncate">
+                      Transactions
+                    </dt>
+                    <dd
+                      class="text-lg font-medium text-gray-900"
+                      id="summary-transactions"
+                    >
+                      ...
+                    </dd>
+                  </dl>
+                </div>
+              </div>
+            </div>
+
+            <div class="bg-white rounded-lg shadow-md p-6">
+              <div class="flex items-center">
+                <div class="flex-shrink-0">
+                  <div class="bg-green-100 p-3 rounded-full">
+                    <svg
+                      class="h-6 w-6 text-green-600"
+                      fill="none"
+                      viewBox="0 0 24 24"
+                      stroke="currentColor"
+                    >
+                      <path
+                        stroke-linecap="round"
+                        stroke-linejoin="round"
+                        stroke-width="2"
+                        d="M13 10V3L4 14h7v7l9-11h-7z"
+                      />
+                    </svg>
+                  </div>
+                </div>
+                <div class="ml-5 w-0 flex-1">
+                  <dl>
+                    <dt class="text-sm font-medium text-gray-500 truncate">
+                      Gas Used
+                    </dt>
+                    <dd
+                      class="text-lg font-medium text-gray-900"
+                      id="summary-gas-used"
+                    >
+                      ...
+                    </dd>
+                  </dl>
+                </div>
+              </div>
+            </div>
+
+            <div class="bg-white rounded-lg shadow-md p-6">
+              <div class="flex items-center">
+                <div class="flex-shrink-0">
+                  <div class="bg-yellow-100 p-3 rounded-full">
+                    <svg
+                      class="h-6 w-6 text-yellow-600"
+                      fill="none"
+                      viewBox="0 0 24 24"
+                      stroke="currentColor"
+                    >
+                      <path
+                        stroke-linecap="round"
+                        stroke-linejoin="round"
+                        stroke-width="2"
+                        d="M12 8c-1.657 0-3 .895-3 2s1.343 2 3 2 3 .895 3 2-1.343 2-3 2m0-8c1.11 0 2.08.402 2.599 1M12 8V7m0 1v8m0 0v1m0-1c-1.11 0-2.08-.402-2.599-1"
+                      />
+                    </svg>
+                  </div>
+                </div>
+                <div class="ml-5 w-0 flex-1">
+                  <dl>
+                    <dt class="text-sm font-medium text-gray-500 truncate">
+                      Base Fee
+                    </dt>
+                    <dd
+                      class="text-lg font-medium text-gray-900"
+                      id="summary-base-fee"
+                    >
+                      ...
+                    </dd>
+                  </dl>
+                </div>
+              </div>
+            </div>
+
+            <div class="bg-white rounded-lg shadow-md p-6">
+              <div class="flex items-center">
+                <div class="flex-shrink-0">
+                  <div class="bg-purple-100 p-3 rounded-full">
+                    <svg
+                      class="h-6 w-6 text-purple-600"
+                      fill="none"
+                      viewBox="0 0 24 24"
+                      stroke="currentColor"
+                    >
+                      <path
+                        stroke-linecap="round"
+                        stroke-linejoin="round"
+                        stroke-width="2"
+                        d="M7 4V2a1 1 0 011-1h8a1 1 0 011 1v2m0 0V1a1 1 0 011-1h2a1 1 0 011 1v18a1 1 0 01-1 1H4a1 1 0 01-1-1V1a1 1 0 011-1h2a1 1 0 011 1v3m10-4v4H7V0"
+                      />
+                    </svg>
+                  </div>
+                </div>
+                <div class="ml-5 w-0 flex-1">
+                  <dl>
+                    <dt class="text-sm font-medium text-gray-500 truncate">
+                      Size
+                    </dt>
+                    <dd
+                      class="text-lg font-medium text-gray-900"
+                      id="summary-size"
+                    >
+                      ...
+                    </dd>
+                  </dl>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <!-- Block Details Table -->
+          <div class="bg-white shadow-md rounded-lg overflow-hidden mb-8">
+            <div class="px-6 py-4 bg-gray-50 border-b border-gray-200">
+              <h3 class="text-lg font-medium text-gray-900">
+                Block Information
+              </h3>
+            </div>
+            <div class="overflow-x-auto">
+              <table class="min-w-full divide-y divide-gray-200">
+                <tbody
+                  id="block-details-table"
+                  class="bg-white divide-y divide-gray-200"
+                >
+                  <!-- Block details will be populated here -->
+                </tbody>
+              </table>
+            </div>
+          </div>
+
+          <!-- Transactions in Block -->
+          <div class="bg-white shadow-md rounded-lg overflow-hidden">
+            <div
+              class="px-6 py-4 bg-gray-50 border-b border-gray-200 flex justify-between items-center"
+            >
+              <h3 class="text-lg font-medium text-gray-900">
+                Transactions in this Block
+              </h3>
+              <span class="text-sm text-gray-500" id="transactions-count"
+                >... transactions</span
+              >
+            </div>
+
+            <!-- Transactions Loading -->
+            <div id="transactions-loading" class="p-6 text-center">
+              <div
+                class="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600 mx-auto"
+              ></div>
+              <p class="mt-2 text-gray-600">Loading transactions...</p>
+            </div>
+
+            <!-- Transactions Table -->
+            <div id="transactions-content" class="hidden">
+              <div class="overflow-x-auto">
+                <table class="min-w-full divide-y divide-gray-200">
+                  <thead class="bg-gray-50">
+                    <tr>
+                      <th
+                        class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider"
+                      >
+                        Hash
+                      </th>
+                      <th
+                        class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider"
+                      >
+                        From
+                      </th>
+                      <th
+                        class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider"
+                      >
+                        To
+                      </th>
+                      <th
+                        class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider"
+                      >
+                        Value
+                      </th>
+                      <th
+                        class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider"
+                      >
+                        Gas Used
+                      </th>
+                      <th
+                        class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider"
+                      >
+                        Status
+                      </th>
+                    </tr>
+                  </thead>
+                  <tbody
+                    id="block-transactions"
+                    class="bg-white divide-y divide-gray-200"
+                  >
+                    <!-- Transactions will be populated here -->
+                  </tbody>
+                </table>
+              </div>
+            </div>
+          </div>
+        </div>
+      </main>
+
+      <!-- Footer -->
+      <footer class="bg-white border-t border-gray-200 mt-12">
+        <div class="max-w-7xl mx-auto py-6 px-4 sm:px-6 lg:px-8">
+          <div class="flex justify-center">
+            <p class="text-base text-gray-500">
+              &copy; 2025 ETH Indexer RS. All rights reserved.
+            </p>
+          </div>
+        </div>
+      </footer>
+    </div>
+
+    <script src="/js/block-detail.js"></script>
+  </body>
+</html>

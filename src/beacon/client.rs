@@ -2,7 +2,7 @@ use anyhow::{Context, Result};
 use reqwest::Client;
 use serde::{Deserialize, Serialize};
 use std::sync::Arc;
-use tracing::{debug, error, info};
+use tracing::{error, info};
 
 /// Beacon Chain client for fetching consensus layer data
 pub struct BeaconClient {
@@ -65,9 +65,21 @@ pub struct ExecutionPayload {
     pub excess_blob_gas: Option<String>,
 }
 
-/// API response wrapper
+/// API response wrapper for beacon blocks (v2 endpoint)
 #[derive(Debug, Deserialize)]
 struct ApiResponse<T> {
+    data: ApiResponseData<T>,
+}
+
+/// API response data wrapper
+#[derive(Debug, Deserialize)]
+struct ApiResponseData<T> {
+    message: T,
+}
+
+/// API response wrapper for beacon headers (v1 endpoint)
+#[derive(Debug, Deserialize)]
+struct ApiHeaderResponse<T> {
     data: T,
 }
 
@@ -84,7 +96,7 @@ impl BeaconClient {
     pub async fn test_connection(&self) -> Result<()> {
         let url = format!("{}/eth/v1/node/health", self.base_url);
         let response = self.client.get(&url).send().await?;
-        
+
         if response.status().is_success() {
             info!("Successfully connected to Beacon node at {}", self.base_url);
             Ok(())
@@ -97,39 +109,129 @@ impl BeaconClient {
     /// Get beacon block header by slot
     pub async fn get_block_header(&self, slot: u64) -> Result<Option<BeaconBlockHeader>> {
         let url = format!("{}/eth/v1/beacon/headers/{}", self.base_url, slot);
-        debug!("Fetching beacon block header for slot {}", slot);
+        info!("Fetching beacon block header from URL: {}", url);
 
-        let response = self.client.get(&url).send().await?;
-        
+        let response = self
+            .client
+            .get(&url)
+            .send()
+            .await
+            .context(format!("Failed to make request to {}", url))?;
+
+        info!("Beacon header response status: {}", response.status());
+
         if response.status() == 404 {
+            info!("Beacon header not found for slot {}", slot);
             return Ok(None);
         }
 
-        let api_response: ApiResponse<BeaconBlockHeader> = response
-            .json()
-            .await
-            .context("Failed to parse beacon block header response")?;
+        if !response.status().is_success() {
+            let status = response.status();
+            let error_text = response
+                .text()
+                .await
+                .unwrap_or_else(|_| "Unable to read error".to_string());
+            error!(
+                "Beacon header request failed with status {}: {}",
+                status, error_text
+            );
+            return Err(anyhow::anyhow!("HTTP {} error: {}", status, error_text));
+        }
 
+        let response_text = response
+            .text()
+            .await
+            .context("Failed to read beacon header response body")?;
+        info!("Beacon header response body: {}", response_text);
+
+        info!("🔧 Attempting to parse beacon header JSON...");
+        let api_response: ApiHeaderResponse<BeaconBlockHeader> =
+            match serde_json::from_str(&response_text) {
+                Ok(response) => {
+                    info!("✅ Successfully parsed beacon header JSON");
+                    response
+                }
+                Err(e) => {
+                    info!("❌ Failed to parse beacon header JSON: {}", e);
+                    return Err(anyhow::anyhow!(
+                        "Failed to parse beacon header response: {}",
+                        e
+                    ));
+                }
+            };
+
+        info!(
+            "✅ Found beacon header with slot: {}",
+            api_response.data.slot
+        );
         Ok(Some(api_response.data))
     }
 
     /// Get beacon block by slot  
     pub async fn get_block(&self, slot: u64) -> Result<Option<BeaconBlock>> {
         let url = format!("{}/eth/v2/beacon/blocks/{}", self.base_url, slot);
-        debug!("Fetching beacon block for slot {}", slot);
+        info!("Fetching beacon block from URL: {}", url);
 
-        let response = self.client.get(&url).send().await?;
-        
+        let response = self
+            .client
+            .get(&url)
+            .send()
+            .await
+            .context(format!("Failed to make request to {}", url))?;
+
+        info!("Beacon block response status: {}", response.status());
+
         if response.status() == 404 {
+            info!("Beacon block not found for slot {}", slot);
             return Ok(None);
         }
 
-        let api_response: ApiResponse<BeaconBlock> = response
-            .json()
-            .await
-            .context("Failed to parse beacon block response")?;
+        if !response.status().is_success() {
+            let status = response.status();
+            let error_text = response
+                .text()
+                .await
+                .unwrap_or_else(|_| "Unable to read error".to_string());
+            error!(
+                "Beacon block request failed with status {}: {}",
+                status, error_text
+            );
+            return Err(anyhow::anyhow!("HTTP {} error: {}", status, error_text));
+        }
 
-        Ok(Some(api_response.data))
+        let response_text = response
+            .text()
+            .await
+            .context("Failed to read beacon block response body")?;
+        info!(
+            "Beacon block response body (first 500 chars): {}",
+            if response_text.len() > 500 {
+                &response_text[..500]
+            } else {
+                &response_text
+            }
+        );
+
+        info!("🔧 Attempting to parse beacon block JSON...");
+        let api_response: ApiResponse<BeaconBlock> = match serde_json::from_str(&response_text) {
+            Ok(response) => {
+                info!("✅ Successfully parsed beacon block JSON");
+                response
+            }
+            Err(e) => {
+                info!("❌ Failed to parse beacon block JSON: {}", e);
+                return Err(anyhow::anyhow!(
+                    "Failed to parse beacon block response: {}",
+                    e
+                ));
+            }
+        };
+
+        info!(
+            "✅ Found beacon block with slot: {}",
+            api_response.data.message.slot
+        );
+        Ok(Some(api_response.data.message))
     }
 
     /// Get slot for execution block number
@@ -159,10 +261,10 @@ impl BeaconClient {
     /// Get beacon chain deposit count
     pub async fn get_deposit_count(&self) -> Result<u64> {
         let url = format!("{}/eth/v1/beacon/deposit_snapshot", self.base_url);
-        
+
         let response = self.client.get(&url).send().await?;
         let data: serde_json::Value = response.json().await?;
-        
+
         if let Some(count) = data["data"]["deposit_count"].as_str() {
             Ok(count.parse()?)
         } else {
@@ -188,10 +290,22 @@ pub struct BeaconBlockData {
 impl BeaconClient {
     /// Get beacon data for execution block
     pub async fn get_beacon_data_for_block(&self, block_number: u64) -> Result<BeaconBlockData> {
+        info!(
+            "🔍 Fetching beacon data for execution block {}",
+            block_number
+        );
+
         // Get estimated slot for this execution block
         let slot = match self.get_slot_by_execution_block(block_number).await? {
-            Some(s) => s,
+            Some(s) => {
+                info!("📍 Estimated slot {} for block {}", s, block_number);
+                s
+            }
             None => {
+                info!(
+                    "⚠️  Block {} is pre-merge, returning empty beacon data",
+                    block_number
+                );
                 // Pre-merge block, return empty beacon data
                 return Ok(BeaconBlockData {
                     slot: None,
@@ -208,18 +322,24 @@ impl BeaconClient {
         };
 
         // Try to get beacon block for this slot
+        info!("🚀 Fetching beacon block for slot {}", slot);
         let beacon_block = self.get_block(slot).await?;
-        
+
         if let Some(block) = beacon_block {
+            info!(
+                "✅ Found beacon block for slot {}, proposer: {}",
+                slot, block.proposer_index
+            );
             let slot_num = block.slot.parse::<u64>().unwrap_or(0);
             let proposer_index = block.proposer_index.parse::<u64>().unwrap_or(0);
             let epoch = Self::slot_to_epoch(slot_num);
-            
+
             // Get deposit count
             let deposit_count = self.get_deposit_count().await.unwrap_or(0);
-            
+
             // Extract graffiti and randao from block body
-            let graffiti = if block.body.graffiti.starts_with("0x") && block.body.graffiti.len() > 2 {
+            let graffiti = if block.body.graffiti.starts_with("0x") && block.body.graffiti.len() > 2
+            {
                 // Decode hex graffiti to UTF-8 if possible
                 hex::decode(&block.body.graffiti[2..])
                     .ok()
@@ -229,6 +349,10 @@ impl BeaconClient {
                 Some(block.body.graffiti.clone())
             };
 
+            info!(
+                "✨ Successfully parsed beacon data: slot={}, proposer={}, epoch={}",
+                slot_num, proposer_index, epoch
+            );
             Ok(BeaconBlockData {
                 slot: Some(slot_num as i64),
                 proposer_index: Some(proposer_index as i64),
@@ -238,11 +362,17 @@ impl BeaconClient {
                 beacon_deposit_count: Some(deposit_count as i64),
                 graffiti,
                 randao_reveal: Some(block.body.randao_reveal),
-                randao_mix: block.body.execution_payload
+                randao_mix: block
+                    .body
+                    .execution_payload
                     .as_ref()
                     .map(|payload| payload.prev_randao.clone()),
             })
         } else {
+            info!(
+                "❌ No beacon block found for slot {}, returning partial data",
+                slot
+            );
             // Slot not found, return partial data
             Ok(BeaconBlockData {
                 slot: Some(slot as i64),

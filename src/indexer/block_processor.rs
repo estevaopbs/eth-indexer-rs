@@ -15,14 +15,24 @@ use super::transaction_processor::TransactionProcessor;
 pub struct BlockProcessor {
     db: Arc<DatabaseService>,
     rpc: Arc<RpcClient>,
-    beacon: Arc<BeaconClient>, // Now mandatory
+    beacon: Arc<BeaconClient>,          // Now mandatory
     tx_processor: TransactionProcessor, // Shared transaction processor
 }
 
 impl BlockProcessor {
     /// Create a new block processor with mandatory Beacon Chain support
-    pub fn new(db: Arc<DatabaseService>, rpc: Arc<RpcClient>, beacon: Arc<BeaconClient>, tx_processor: TransactionProcessor) -> Self {
-        Self { db, rpc, beacon, tx_processor }
+    pub fn new(
+        db: Arc<DatabaseService>,
+        rpc: Arc<RpcClient>,
+        beacon: Arc<BeaconClient>,
+        tx_processor: TransactionProcessor,
+    ) -> Self {
+        Self {
+            db,
+            rpc,
+            beacon,
+            tx_processor,
+        }
     }
 
     /// Process a block and its transactions
@@ -64,19 +74,26 @@ impl BlockProcessor {
         // Process transactions in parallel with batched receipt fetching and batched database operations
         if !eth_block.transactions.is_empty() {
             let tx_count = eth_block.transactions.len();
-            info!("Processing {} transactions in block #{}", tx_count, block_number);
-            
+            info!(
+                "Processing {} transactions in block #{}",
+                tx_count, block_number
+            );
+
             // Extract transaction hashes for batch receipt fetching
-            let tx_hashes: Vec<String> = eth_block.transactions
+            let tx_hashes: Vec<String> = eth_block
+                .transactions
                 .iter()
                 .map(|tx| format!("{:?}", tx.hash))
                 .collect();
-            
+
             // Fetch all receipts in parallel
             let receipts_start = std::time::Instant::now();
-            let receipts = self.tx_processor.get_transaction_receipts_batch(&tx_hashes).await?;
+            let receipts = self
+                .tx_processor
+                .get_transaction_receipts_batch(&tx_hashes)
+                .await?;
             let receipts_time = receipts_start.elapsed();
-            
+
             // Prepare transactions with receipts for batch processing
             let mut tx_receipt_pairs = Vec::new();
             for (tx, receipt) in eth_block.transactions.iter().zip(receipts.iter()) {
@@ -84,9 +101,13 @@ impl BlockProcessor {
                     tx_receipt_pairs.push((tx.clone(), receipt.clone()));
                 }
             }
-            
+
             // Process entire block's transactions in one optimized batch
-            match self.tx_processor.collect_block_transaction_data(&tx_receipt_pairs).await {
+            match self
+                .tx_processor
+                .collect_block_transaction_data(&tx_receipt_pairs)
+                .await
+            {
                 Ok((all_transactions, all_logs, all_token_transfers, all_accounts)) => {
                     // Batch insert all data at once for maximum performance
                     if !all_transactions.is_empty() {
@@ -94,19 +115,23 @@ impl BlockProcessor {
                             error!("Failed to batch insert transactions: {}", e);
                         }
                     }
-                    
+
                     if !all_logs.is_empty() {
                         if let Err(e) = self.db.insert_logs_batch(&all_logs).await {
                             error!("Failed to batch insert logs: {}", e);
                         }
                     }
-                    
+
                     if !all_token_transfers.is_empty() {
-                        if let Err(e) = self.db.insert_token_transfers_batch(&all_token_transfers).await {
+                        if let Err(e) = self
+                            .db
+                            .insert_token_transfers_batch(&all_token_transfers)
+                            .await
+                        {
                             error!("Failed to batch insert token transfers: {}", e);
                         }
                     }
-                    
+
                     if !all_accounts.is_empty() {
                         if let Err(e) = self.db.insert_accounts_batch(&all_accounts).await {
                             error!("Failed to batch insert accounts: {}", e);
@@ -121,20 +146,31 @@ impl BlockProcessor {
                           start_time.elapsed().as_millis());
                 }
                 Err(e) => {
-                    error!("Failed to process block {} transactions: {}", block_number, e);
+                    error!(
+                        "Failed to process block {} transactions: {}",
+                        block_number, e
+                    );
                 }
             }
-            
+
             // Note: Not clearing cache here to maintain performance across blocks
         }
 
         let total_time = start_time.elapsed();
         if total_time.as_millis() > 5000 {
-            warn!("Block #{} took {}ms (slow processing)", block_number, total_time.as_millis());
+            warn!(
+                "Block #{} took {}ms (slow processing)",
+                block_number,
+                total_time.as_millis()
+            );
         } else {
-            info!("Block #{} completed in {}ms ✅", block_number, total_time.as_millis());
+            info!(
+                "Block #{} completed in {}ms ✅",
+                block_number,
+                total_time.as_millis()
+            );
         }
-        
+
         debug!("Completed processing block #{}", block_number);
         Ok(())
     }

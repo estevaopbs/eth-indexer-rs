@@ -1,0 +1,215 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Accounts - ETH Indexer RS</title>
+    <link
+      href="https://cdn.jsdelivr.net/npm/tailwindcss@2.2.19/dist/tailwind.min.css"
+      rel="stylesheet"
+    />
+    <link rel="stylesheet" href="/css/styles.css" />
+  </head>
+  <body>
+    <div class="min-h-screen">
+      <!-- Navigation -->
+      <nav class="bg-gray-800 text-white shadow-lg">
+        <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+          <div class="flex items-center justify-between h-16">
+            <div class="flex items-center">
+              <div class="flex-shrink-0">
+                <h1 class="text-xl font-bold">ETH Indexer RS</h1>
+              </div>
+              <div class="hidden md:block">
+                <div class="ml-10 flex items-baseline space-x-4">
+                  <a
+                    href="/"
+                    class="px-3 py-2 rounded-md text-sm font-medium text-gray-300 hover:text-white hover:bg-gray-700"
+                    >Dashboard</a
+                  >
+                  <a
+                    href="/blocks.html"
+                    class="px-3 py-2 rounded-md text-sm font-medium text-gray-300 hover:text-white hover:bg-gray-700"
+                    >Blocks</a
+                  >
+                  <a
+                    href="/transactions.html"
+                    class="px-3 py-2 rounded-md text-sm font-medium text-gray-300 hover:text-white hover:bg-gray-700"
+                    >Transactions</a
+                  >
+                  <a
+                    href="/accounts.html"
+                    class="px-3 py-2 rounded-md text-sm font-medium text-white bg-gray-900"
+                    >Accounts</a
+                  >
+                </div>
+              </div>
+            </div>
+            <div class="flex items-center space-x-4">
+              <!-- Search -->
+              <div class="relative">
+                <input
+                  type="text"
+                  id="search-input"
+                  onkeypress="handleSearchKeyPress(event)"
+                  placeholder="Search by account address..."
+                  class="w-64 px-3 py-2 border border-gray-300 rounded-md text-gray-900 placeholder-gray-500 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                />
+              </div>
+            </div>
+          </div>
+        </div>
+      </nav>
+
+      <!-- Main Content -->
+      <main class="max-w-7xl mx-auto py-6 px-4 sm:px-6 lg:px-8">
+        <!-- Page Header -->
+        <div class="mb-8">
+          <h2 class="text-3xl font-bold text-gray-900">Accounts</h2>
+          <p class="mt-2 text-gray-600">
+            Browse indexed Ethereum accounts and their activity
+          </p>
+        </div>
+
+        <!-- Filter and Pagination Controls -->
+        <div class="bg-white rounded-lg shadow-md p-6 mb-6">
+          <div
+            class="flex flex-col md:flex-row md:items-center md:justify-between space-y-4 md:space-y-0"
+          >
+            <div class="flex items-center space-x-4">
+              <label class="text-sm font-medium text-gray-700">Show:</label>
+              <select
+                id="per-page-select"
+                class="rounded-md border-gray-300 text-sm"
+              >
+                <option value="20" selected>20 per page</option>
+                <option value="50">50 per page</option>
+                <option value="100">100 per page</option>
+              </select>
+              <label class="text-sm font-medium text-gray-700 ml-4"
+                >Sort by:</label
+              >
+              <select
+                id="sort-select"
+                class="rounded-md border-gray-300 text-sm"
+              >
+                <option value="tx_count_desc">
+                  Transaction Count (High to Low)
+                </option>
+                <option value="tx_count_asc">
+                  Transaction Count (Low to High)
+                </option>
+                <option value="balance_desc" selected>
+                  Balance (High to Low)
+                </option>
+                <option value="balance_asc">Balance (Low to High)</option>
+                <option value="first_seen_desc">First Seen (Recent)</option>
+                <option value="first_seen_asc">First Seen (Oldest)</option>
+              </select>
+            </div>
+            <div class="flex items-center space-x-2">
+              <button
+                id="prev-page"
+                class="px-3 py-2 bg-gray-200 text-gray-700 rounded-md hover:bg-gray-300 disabled:opacity-50"
+                disabled
+              >
+                Previous
+              </button>
+              <span id="page-info" class="text-sm text-gray-600">Page 1</span>
+              <button
+                id="next-page"
+                class="px-3 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700"
+              >
+                Next
+              </button>
+            </div>
+          </div>
+        </div>
+
+        <!-- Accounts Table -->
+        <div class="bg-white rounded-lg shadow-md overflow-hidden">
+          <div class="px-6 py-4 bg-gray-50 border-b border-gray-200">
+            <h3 class="text-lg font-medium text-gray-900">Indexed Accounts</h3>
+          </div>
+          <div class="overflow-x-auto">
+            <table class="w-full divide-y divide-gray-200">
+              <thead class="bg-gray-50">
+                <tr>
+                  <th
+                    class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider"
+                  >
+                    Address
+                  </th>
+                  <th
+                    class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider"
+                  >
+                    Balance (ETH)
+                  </th>
+                  <th
+                    class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider"
+                  >
+                    Transaction Count
+                  </th>
+                  <th
+                    class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider"
+                  >
+                    Type
+                  </th>
+                  <th
+                    class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider"
+                  >
+                    First Seen
+                  </th>
+                  <th
+                    class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider"
+                  >
+                    Last Activity
+                  </th>
+                </tr>
+              </thead>
+              <tbody id="accounts-table" class="divide-y divide-gray-200">
+                <!-- Accounts will be loaded here -->
+              </tbody>
+            </table>
+          </div>
+
+          <!-- Loading State -->
+          <div id="loading-state" class="p-6 text-center">
+            <div
+              class="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600 mx-auto"
+            ></div>
+            <p class="mt-2 text-gray-600">Loading accounts...</p>
+          </div>
+
+          <!-- Error State -->
+          <div id="error-state" class="p-6 text-center hidden">
+            <p class="text-red-600">
+              Error loading accounts. Please try again.
+            </p>
+            <button
+              id="retry-btn"
+              class="mt-2 px-4 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700"
+            >
+              Retry
+            </button>
+          </div>
+        </div>
+      </main>
+
+      <!-- Footer -->
+      <footer class="bg-white border-t border-gray-200 mt-auto">
+        <div class="max-w-7xl mx-auto py-6 px-4 sm:px-6 lg:px-8">
+          <div class="md:flex md:items-center md:justify-between">
+            <div class="mt-8 md:mt-0 md:order-1">
+              <p class="text-center text-base text-gray-500">
+                &copy; 2025 ETH Indexer RS. All rights reserved.
+              </p>
+            </div>
+          </div>
+        </div>
+      </footer>
+    </div>
+
+    <script src="/js/accounts.js"></script>
+  </body>
+</html>

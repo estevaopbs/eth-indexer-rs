@@ -106,7 +106,7 @@ async function initializeData() {
           row.className = "hover:bg-gray-50";
           row.innerHTML = `
             <td class="px-3 py-4 whitespace-nowrap text-left">
-              <a href="/blocks.html?number=${block.number}" class="text-blue-600 hover:text-blue-900">${block.number}</a>
+              <a href="/block-detail.html?number=${block.number}" class="text-blue-600 hover:text-blue-900">${block.number}</a>
             </td>
             <td class="px-3 py-4 whitespace-nowrap text-left">${block.transaction_count}</td>
             <td class="px-3 py-4 whitespace-nowrap text-left">${formatNumber(block.gas_used || 0)}</td>
@@ -149,7 +149,7 @@ async function initializeData() {
           row.className = "hover:bg-gray-50";
           row.innerHTML = `
             <td class="px-3 py-4 whitespace-nowrap text-sm font-mono truncate">
-              <a href="/transactions.html?hash=${tx.hash}" class="hash-link">${truncateHash(tx.hash)}</a>
+              <a href="/transaction-detail.html?hash=${tx.hash}" class="hash-link">${truncateHash(tx.hash)}</a>
             </td>
             <td class="px-3 py-4 whitespace-nowrap text-sm font-mono truncate">
               <a href="/accounts.html?address=${tx.from_address}" class="hash-link">${truncateHash(tx.from_address)}</a>
@@ -312,7 +312,7 @@ async function loadRecentBlocks() {
         row.className = "hover:bg-gray-50 fade-in";
         row.innerHTML = `
                       <td class="px-3 py-4 whitespace-nowrap text-left">
-                          <a href="/blocks.html?number=${block.number
+                          <a href="/block-detail.html?number=${block.number
           }" class="text-blue-600 hover:text-blue-900">${block.number
           }</a>
                       </td>
@@ -386,20 +386,20 @@ async function loadRecentTransactions() {
         row.className = "hover:bg-gray-50 fade-in";
         row.innerHTML = `
                       <td class="px-3 py-4 whitespace-nowrap text-sm font-mono truncate">
-                          <a href="/transactions.html?hash=${tx.hash
+                          <a href="/transaction-detail.html?hash=${tx.hash
           }" class="hash-link">${truncateHash(
             tx.hash
           )}</a>
                       </td>
                       <td class="px-3 py-4 whitespace-nowrap text-sm font-mono truncate">
-                          <a href="/accounts.html?address=${tx.from_address
+                          <a href="/account-detail.html?address=${tx.from_address
           }" class="hash-link">${truncateHash(
             tx.from_address
           )}</a>
                       </td>
                       <td class="px-3 py-4 whitespace-nowrap text-sm font-mono truncate">
                           ${tx.to_address
-            ? `<a href="/accounts.html?address=${tx.to_address
+            ? `<a href="/account-detail.html?address=${tx.to_address
             }" class="hash-link">${truncateHash(
               tx.to_address
             )}</a>`
@@ -1222,7 +1222,7 @@ async function loadRecentBlocksDelta() {
         row.className = "hover:bg-gray-50";
         row.innerHTML = `
           <td class="px-3 py-4 whitespace-nowrap text-left">
-            <a href="/blocks.html?number=${block.number}" class="text-blue-600 hover:text-blue-900">${block.number}</a>
+            <a href="/block-detail.html?number=${block.number}" class="text-blue-600 hover:text-blue-900">${block.number}</a>
           </td>
           <td class="px-3 py-4 whitespace-nowrap text-left">${block.transaction_count}</td>
           <td class="px-3 py-4 whitespace-nowrap text-left">${formatNumber(block.gas_used || 0)}</td>
@@ -1321,14 +1321,14 @@ async function loadRecentTransactionsDelta() {
         row.className = "hover:bg-gray-50";
         row.innerHTML = `
           <td class="px-3 py-4 whitespace-nowrap text-sm font-mono truncate">
-            <a href="/transactions.html?hash=${tx.hash}" class="hash-link">${truncateHash(tx.hash)}</a>
+            <a href="/transaction-detail.html?hash=${tx.hash}" class="hash-link">${truncateHash(tx.hash)}</a>
           </td>
           <td class="px-3 py-4 whitespace-nowrap text-sm font-mono truncate">
-            <a href="/accounts.html?address=${tx.from_address}" class="hash-link">${truncateHash(tx.from_address)}</a>
+            <a href="/account-detail.html?address=${tx.from_address}" class="hash-link">${truncateHash(tx.from_address)}</a>
           </td>
           <td class="px-3 py-4 whitespace-nowrap text-sm font-mono truncate">
             ${tx.to_address
-            ? `<a href="/accounts.html?address=${tx.to_address}" class="hash-link">${truncateHash(tx.to_address)}</a>`
+            ? `<a href="/account-detail.html?address=${tx.to_address}" class="hash-link">${truncateHash(tx.to_address)}</a>`
             : '<span class="text-gray-500 text-sm">Contract Creation</span>'
           }
           </td>

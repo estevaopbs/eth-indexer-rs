@@ -36,6 +36,7 @@ pub async fn create_router(app: Arc<App>) -> Router {
         .route("/transactions/live", get(get_live_transactions))
         .route("/transactions/since", get(get_transactions_since))
         .route("/transactions/:hash", get(get_transaction_by_hash))
+        .route("/accounts", get(get_accounts))
         .route("/accounts/:address", get(get_account))
         .route("/search/:query", get(search))
         .layer(Extension(app.clone()))
