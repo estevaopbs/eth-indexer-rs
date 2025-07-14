@@ -8,9 +8,11 @@ pub struct AppConfig {
     pub eth_rpc_url: String,
     pub beacon_rpc_url: String, // Beacon Chain API URL (now mandatory)
     pub api_port: u16,
-    pub start_block: Option<u64>,
+    pub start_block: Option<i64>, // Changed from u64 to i64 to support -1
     pub max_concurrent_requests: usize,
     pub blocks_per_batch: usize,
+    pub sync_delay_seconds: Option<u32>, // Delay between sync attempts when already in sync
+    pub block_fetch_interval_seconds: Option<u32>, // Polling interval for new blocks
     pub bigquery_service_account_path: Option<String>,
 }
 
@@ -53,6 +55,12 @@ impl AppConfig {
                 .ok()
                 .and_then(|n| n.parse().ok())
                 .unwrap_or(10),
+            sync_delay_seconds: env::var("SYNC_DELAY_SECONDS")
+                .ok()
+                .and_then(|n| n.parse().ok()),
+            block_fetch_interval_seconds: env::var("BLOCK_FETCH_INTERVAL_SECONDS")
+                .ok()
+                .and_then(|n| n.parse().ok()),
             bigquery_service_account_path: env::var("BIGQUERY_SERVICE_ACCOUNT_PATH").ok(),
         };
 
@@ -87,7 +95,8 @@ impl AppConfig {
 
     /// Resolve the start_block using database configuration and environment variables
     /// Returns the final start_block value to use, checking database first, then env vars
-    pub async fn resolve_start_block(&mut self, db: &crate::database::DatabaseService) -> Result<(), ConfigError> {
+    /// If start_block is -1, it will be resolved to the latest network block
+    pub async fn resolve_start_block(&mut self, db: &crate::database::DatabaseService, rpc: Option<&crate::rpc::RpcClient>) -> Result<(), ConfigError> {
         use tracing::{info, warn};
 
         // Get start_block from environment/config file
@@ -95,17 +104,26 @@ impl AppConfig {
 
         // Get start_block from database
         let db_start_block = db.get_start_block().await
-            .map_err(|e| ConfigError::InvalidValue(format!("Failed to get start_block from database: {}", e)))?;
+            .map_err(|e| ConfigError::InvalidValue(format!("Failed to get start_block from database: {}", e)))?
+            .map(|v| v as i64);
 
         match (db_start_block, env_start_block) {
             (Some(db_value), Some(env_value)) => {
                 // Both database and environment have values
-                if db_value != env_value {
+                if env_value == -1 {
+                    // Special case: user wants to start from latest block
+                    let resolved_block = self.resolve_latest_block(rpc).await?;
+                    info!("Resolved START_BLOCK=-1 to latest network block: {}", resolved_block);
+                    db.set_start_block(resolved_block as u64).await
+                        .map_err(|e| ConfigError::InvalidValue(format!("Failed to save resolved start_block to database: {}", e)))?;
+                    self.start_block = Some(resolved_block);
+                } else if db_value != env_value {
                     warn!("Start block mismatch! Database has {}, environment/config has {}. Using database value.", db_value, env_value);
+                    self.start_block = Some(db_value);
                 } else {
                     info!("Start block consistent: {} (database and environment match)", db_value);
+                    self.start_block = Some(db_value);
                 }
-                self.start_block = Some(db_value);
             },
             (Some(db_value), None) => {
                 // Only database has value
@@ -113,11 +131,20 @@ impl AppConfig {
                 self.start_block = Some(db_value);
             },
             (None, Some(env_value)) => {
-                // Only environment has value, save to database
-                info!("Saving start block from environment to database: {}", env_value);
-                db.set_start_block(env_value).await
-                    .map_err(|e| ConfigError::InvalidValue(format!("Failed to save start_block to database: {}", e)))?;
-                self.start_block = Some(env_value);
+                // Only environment has value
+                if env_value == -1 {
+                    // Special case: user wants to start from latest block
+                    let resolved_block = self.resolve_latest_block(rpc).await?;
+                    info!("Resolved START_BLOCK=-1 to latest network block: {}", resolved_block);
+                    db.set_start_block(resolved_block as u64).await
+                        .map_err(|e| ConfigError::InvalidValue(format!("Failed to save resolved start_block to database: {}", e)))?;
+                    self.start_block = Some(resolved_block);
+                } else {
+                    info!("Saving start block from environment to database: {}", env_value);
+                    db.set_start_block(env_value as u64).await
+                        .map_err(|e| ConfigError::InvalidValue(format!("Failed to save start_block to database: {}", e)))?;
+                    self.start_block = Some(env_value);
+                }
             },
             (None, None) => {
                 // Neither has value, use default of 0
@@ -129,6 +156,19 @@ impl AppConfig {
         }
 
         Ok(())
+    }
+
+    /// Resolve START_BLOCK=-1 to the latest network block
+    async fn resolve_latest_block(&self, rpc: Option<&crate::rpc::RpcClient>) -> Result<i64, ConfigError> {
+        if let Some(rpc_client) = rpc {
+            let latest_block = rpc_client.get_latest_block_number().await
+                .map_err(|e| ConfigError::InvalidValue(format!("Failed to get latest block from RPC: {}", e)))?;
+            Ok(latest_block as i64)
+        } else {
+            Err(ConfigError::InvalidValue(
+                "RPC client is required to resolve START_BLOCK=-1".to_string()
+            ))
+        }
     }
 }
 

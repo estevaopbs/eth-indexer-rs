@@ -41,12 +41,12 @@ impl App {
         let db = Arc::new(DatabaseService::new(&config.database_url).await?);
         info!("Database initialized");
 
-        // Resolve start_block using database configuration
-        config.resolve_start_block(&db).await?;
-
         // Initialize RPC client
         let rpc = Arc::new(RpcClient::new(&config.eth_rpc_url, config.clone())?);
         info!("RPC client connected to {}", config.eth_rpc_url);
+
+        // Resolve start_block using database configuration and RPC (for -1 case)
+        config.resolve_start_block(&db, Some(&rpc)).await?;
 
         // Initialize Beacon client
         let beacon = Arc::new(BeaconClient::new(&config.beacon_rpc_url));
@@ -66,7 +66,7 @@ impl App {
         
         // Initialize historical data if start_block is configured
         if let Some(start_block) = config.start_block {
-            if let Err(e) = historical.initialize(start_block as i64).await {
+            if let Err(e) = historical.initialize(start_block).await {
                 error!("Failed to initialize historical transaction service: {}", e);
             }
         }

@@ -2,18 +2,19 @@ mod block_processor;
 mod transaction_processor;
 
 use crate::{beacon::BeaconClient, config::AppConfig, database::DatabaseService, rpc::RpcClient};
-use anyhow::{Context, Result};
+use anyhow::Result;
 use std::sync::{
-    atomic::{AtomicBool, Ordering},
+    atomic::{AtomicBool, AtomicI64, Ordering},
     Arc,
 };
+use tokio::sync::mpsc;
 use tokio::time::{self, Duration};
 use tracing::{error, info, warn, debug};
 
 use block_processor::BlockProcessor;
 use transaction_processor::TransactionProcessor;
 
-/// Service for indexing blockchain data
+/// Service for indexing blockchain data with continuous block fetching
 pub struct IndexerService {
     db: Arc<DatabaseService>,
     rpc: Arc<RpcClient>,
@@ -22,10 +23,13 @@ pub struct IndexerService {
     is_running: Arc<AtomicBool>,
     block_processor: BlockProcessor,
     tx_processor: TransactionProcessor,
+    // Shared state for the block queue
+    next_block_to_fetch: Arc<AtomicI64>,
+    latest_network_block: Arc<AtomicI64>,
 }
 
 impl IndexerService {
-    /// Create a new indexer service with mandatory Beacon Chain support
+    /// Create a new indexer service with continuous block fetching architecture
     pub fn new(
         db: Arc<DatabaseService>,
         rpc: Arc<RpcClient>,
@@ -43,10 +47,12 @@ impl IndexerService {
             is_running: Arc::new(AtomicBool::new(false)),
             block_processor,
             tx_processor,
+            next_block_to_fetch: Arc::new(AtomicI64::new(0)),
+            latest_network_block: Arc::new(AtomicI64::new(0)),
         }
     }
 
-    /// Start the indexer service (public method that doesn't require mutability)
+    /// Start the indexer service with continuous block fetching
     pub async fn start_service(&self) -> Result<()> {
         if self.is_running.load(Ordering::Relaxed) {
             warn!("Indexer is already running");
@@ -54,19 +60,41 @@ impl IndexerService {
         }
 
         self.is_running.store(true, Ordering::Relaxed);
-        info!("Starting indexer service");
+        info!("Starting indexer service with continuous block fetching");
 
         // Check RPC connection
         match self.rpc.check_connection().await {
             Ok(true) => {
-                info!("RPC connection successful, starting blockchain indexing");
-                // Main indexing loop
-                while self.is_running.load(Ordering::Relaxed) {
-                    if let Err(e) = self.sync_blocks().await {
-                        error!("Error syncing blocks: {}", e);
-                        time::sleep(Duration::from_secs(5)).await;
+                info!("RPC connection successful, starting continuous block indexing");
+
+                // Initialize starting block
+                self.initialize_start_block().await?;
+
+                // Create block queue channel
+                let queue_size = self.config.blocks_per_batch * 4; // 4x buffer
+                let (block_sender, block_receiver) = mpsc::channel::<i64>(queue_size);
+                let receiver = Arc::new(tokio::sync::Mutex::new(block_receiver));
+
+                // Start the block fetcher task (independent loop)
+                let fetcher_handle = self.start_block_fetcher(block_sender.clone());
+
+                // Start worker tasks for processing blocks
+                let worker_handles = self.start_worker_pool(receiver).await;
+
+                // Wait for either fetcher or workers to complete (they shouldn't unless error)
+                tokio::select! {
+                    result = fetcher_handle => {
+                        error!("Block fetcher stopped unexpectedly: {:?}", result);
                     }
-                    time::sleep(Duration::from_millis(500)).await; // Reduced from 2 seconds to 500ms
+                    _ = async {
+                        for handle in worker_handles {
+                            if let Err(e) = handle.await {
+                                error!("Worker failed: {}", e);
+                            }
+                        }
+                    } => {
+                        error!("All workers stopped unexpectedly");
+                    }
                 }
             }
             _ => {
@@ -77,6 +105,185 @@ impl IndexerService {
         }
 
         Ok(())
+    }
+
+    /// Initialize the starting block based on database state and configuration
+    async fn initialize_start_block(&self) -> Result<()> {
+        let latest_indexed_block = match self.db.get_latest_block_number().await? {
+            Some(num) => {
+                info!("Found existing blocks, resuming from block: {}", num + 1);
+                num + 1
+            }
+            None => {
+                let start_block = self.config.start_block.map(|n| n as i64).unwrap_or(0);
+                info!("No blocks found, starting from configured block: {}", start_block);
+                start_block
+            }
+        };
+
+        self.next_block_to_fetch.store(latest_indexed_block, Ordering::Relaxed);
+        
+        // Get initial network block number
+        let network_block = self.rpc.get_latest_block_number().await? as i64;
+        self.latest_network_block.store(network_block, Ordering::Relaxed);
+        
+        info!("Indexer initialized: next_block={}, network_block={}", latest_indexed_block, network_block);
+        Ok(())
+    }
+
+    /// Start the independent block fetcher task
+    fn start_block_fetcher(&self, block_sender: mpsc::Sender<i64>) -> tokio::task::JoinHandle<()> {
+        let rpc = self.rpc.clone();
+        let is_running = self.is_running.clone();
+        let next_block_to_fetch = self.next_block_to_fetch.clone();
+        let latest_network_block = self.latest_network_block.clone();
+        let poll_interval = Duration::from_secs(
+            self.config.block_fetch_interval_seconds.unwrap_or(3) as u64
+        );
+
+        tokio::spawn(async move {
+            info!("Block fetcher started with poll interval: {:?}", poll_interval);
+            
+            while is_running.load(Ordering::Relaxed) {
+                match Self::fetch_and_queue_blocks(&rpc, &block_sender, &next_block_to_fetch, &latest_network_block).await {
+                    Ok(blocks_queued) => {
+                        if blocks_queued > 0 {
+                            debug!("Fetcher queued {} new blocks", blocks_queued);
+                        }
+                    }
+                    Err(e) => {
+                        error!("Block fetcher error: {}", e);
+                    }
+                }
+
+                // Wait for next poll cycle
+                time::sleep(poll_interval).await;
+            }
+            
+            info!("Block fetcher stopped");
+        })
+    }
+
+    /// Fetch new blocks from the network and queue them for processing
+    async fn fetch_and_queue_blocks(
+        rpc: &RpcClient,
+        sender: &mpsc::Sender<i64>,
+        next_block_to_fetch: &AtomicI64,
+        latest_network_block: &AtomicI64,
+    ) -> Result<usize> {
+        // Get latest network block
+        let current_network_block = rpc.get_latest_block_number().await? as i64;
+        latest_network_block.store(current_network_block, Ordering::Relaxed);
+
+        let next_block = next_block_to_fetch.load(Ordering::Relaxed);
+        
+        if next_block > current_network_block {
+            // We're ahead of the network, nothing to do
+            return Ok(0);
+        }
+
+        let mut blocks_queued = 0;
+        let mut block_to_queue = next_block;
+
+        // Queue all available blocks up to the current network block
+        while block_to_queue <= current_network_block {
+            match sender.try_send(block_to_queue) {
+                Ok(_) => {
+                    debug!("Fetcher queued block #{}", block_to_queue);
+                    block_to_queue += 1;
+                    blocks_queued += 1;
+                }
+                Err(mpsc::error::TrySendError::Full(_)) => {
+                    // Queue is full, stop queuing for now
+                    debug!("Block queue is full, will retry on next cycle");
+                    break;
+                }
+                Err(mpsc::error::TrySendError::Closed(_)) => {
+                    // Receiver is closed, workers stopped
+                    warn!("Block queue receiver closed, stopping fetcher");
+                    break;
+                }
+            }
+        }
+
+        // Update the next block to fetch
+        next_block_to_fetch.store(block_to_queue, Ordering::Relaxed);
+
+        if blocks_queued > 0 {
+            info!("Queued {} blocks (range: {} to {}), network at block {}", 
+                  blocks_queued, next_block, block_to_queue - 1, current_network_block);
+        }
+
+        Ok(blocks_queued)
+    }
+
+    /// Start the worker pool for processing blocks
+    async fn start_worker_pool(
+        &self,
+        receiver: Arc<tokio::sync::Mutex<mpsc::Receiver<i64>>>,
+    ) -> Vec<tokio::task::JoinHandle<()>> {
+        let worker_count = self.config.blocks_per_batch;
+        let mut worker_handles = Vec::new();
+        let semaphore = Arc::new(tokio::sync::Semaphore::new(self.config.max_concurrent_requests));
+
+        info!("Starting {} workers for block processing", worker_count);
+
+        for worker_id in 0..worker_count {
+            let receiver_clone = receiver.clone();
+            let block_processor = self.block_processor.clone();
+            let semaphore_clone = semaphore.clone();
+            let is_running = self.is_running.clone();
+
+            let worker_handle = tokio::spawn(async move {
+                info!("Worker {} started and ready for blocks", worker_id);
+
+                while is_running.load(Ordering::Relaxed) {
+                    // Get next block from queue
+                    let block_number = {
+                        let mut rx = receiver_clone.lock().await;
+                        match time::timeout(Duration::from_secs(10), rx.recv()).await {
+                            Ok(Some(block)) => block,
+                            Ok(None) => {
+                                info!("Worker {} received shutdown signal (channel closed)", worker_id);
+                                break;
+                            }
+                            Err(_) => {
+                                // Timeout - no blocks available, continue waiting
+                                debug!("Worker {} timeout waiting for blocks", worker_id);
+                                continue;
+                            }
+                        }
+                    };
+
+                    // Acquire processing permit
+                    let permit = match semaphore_clone.acquire().await {
+                        Ok(permit) => permit,
+                        Err(_) => {
+                            error!("Worker {} failed to acquire semaphore permit for block #{}", worker_id, block_number);
+                            continue;
+                        }
+                    };
+
+                    debug!("Worker {} processing block #{}", worker_id, block_number);
+                    match block_processor.process_block(block_number as u64).await {
+                        Ok(_) => {
+                            info!("Worker {} ✅ completed block #{}", worker_id, block_number);
+                        }
+                        Err(e) => {
+                            error!("Worker {} ❌ failed to process block #{}: {}", worker_id, block_number, e);
+                            // Continue processing other blocks instead of failing entirely
+                        }
+                    }
+                    drop(permit); // Release permit for next block
+                }
+
+                info!("Worker {} shutting down", worker_id);
+            });
+
+            worker_handles.push(worker_handle);
+        }
+
+        worker_handles
     }
 
     /// Start the indexer service
@@ -99,185 +306,19 @@ impl IndexerService {
         self.is_running.load(Ordering::Relaxed)
     }
 
-    /// Sync blocks from the blockchain with intelligent queue management
-    async fn sync_blocks(&self) -> Result<()> {
-        // Get the latest block from the blockchain
-        let latest_chain_block = self.rpc.get_latest_block_number().await?;
-        debug!("Latest chain block: {}", latest_chain_block);
-
-        // Get the latest block we have indexed
-        let latest_indexed_block = match self.db.get_latest_block_number().await? {
-            Some(num) => {
-                debug!("Latest indexed block: {}", num);
-                num
-            }
-            None => {
-                let start_block = self.config.start_block.map(|n| n as i64).unwrap_or(0) - 1;
-                info!("No blocks found, starting from: {}", start_block);
-                start_block
-            }
-        };
-
-        // If we're already in sync, just return
-        if latest_indexed_block >= 0 && latest_indexed_block as u64 >= latest_chain_block {
-            debug!("Already in sync, no new blocks to process");
-            return Ok(());
+    /// Get indexing status for monitoring
+    pub fn get_status(&self) -> IndexerStatus {
+        IndexerStatus {
+            is_running: self.is_running.load(Ordering::Relaxed),
+            next_block_to_fetch: self.next_block_to_fetch.load(Ordering::Relaxed),
+            latest_network_block: self.latest_network_block.load(Ordering::Relaxed),
         }
-
-        let remaining_blocks = latest_chain_block as i64 - latest_indexed_block;
-        info!(
-            "Syncing blocks: indexed={}, chain={}, remaining={}",
-            latest_indexed_block + 1,
-            latest_chain_block,
-            remaining_blocks
-        );
-
-        // Smart queue management system with buffer
-        let worker_pool_size = self.config.blocks_per_batch;
-        let queue_buffer_size = worker_pool_size * 3; // 3x buffer to prevent worker starvation
-        let semaphore = Arc::new(tokio::sync::Semaphore::new(self.config.max_concurrent_requests));
-        
-        // Bounded channel with 3 * BLOCKS_PER_BATCH capacity for better buffering
-        let (block_sender, block_receiver) = tokio::sync::mpsc::channel::<i64>(queue_buffer_size);
-        let receiver = Arc::new(tokio::sync::Mutex::new(block_receiver));
-        
-        // Shared state for queue management
-        let next_block = Arc::new(tokio::sync::Mutex::new(latest_indexed_block + 1));
-        let max_block = latest_chain_block as i64;
-        
-        // Spawn worker tasks that continuously process blocks
-        let mut worker_handles = Vec::new();
-        for worker_id in 0..worker_pool_size {
-            let receiver_clone = receiver.clone();
-            let block_processor = self.block_processor.clone();
-            let semaphore_clone = semaphore.clone();
-            let sender_clone = block_sender.clone();
-            let next_block_clone = next_block.clone();
-            
-            let worker_handle = tokio::spawn(async move {
-                info!("Worker {} started and ready for blocks", worker_id);
-                
-                loop {
-                    // Get next block from shared queue
-                    let block_number = {
-                        let mut rx = receiver_clone.lock().await;
-                        match rx.recv().await {
-                            Some(block) => block,
-                            None => {
-                                info!("Worker {} received shutdown signal", worker_id);
-                                break; // Channel closed, shutdown
-                            }
-                        }
-                    };
-                    
-                    // Try to queue the next block immediately to maintain queue buffer
-                    // This ensures we always have up to 3 * BLOCKS_PER_BATCH blocks in the queue
-                    tokio::spawn({
-                        let sender = sender_clone.clone();
-                        let next_block = next_block_clone.clone();
-                        async move {
-                            let mut next = next_block.lock().await;
-                            if *next <= max_block {
-                                if let Ok(_) = sender.try_send(*next) {
-                                    debug!("Auto-queued next block #{}", *next);
-                                    *next += 1;
-                                }
-                            }
-                        }
-                    });
-                    
-                    // Acquire processing permit
-                    let permit = match semaphore_clone.acquire().await {
-                        Ok(permit) => permit,
-                        Err(_) => {
-                            error!("Worker {} failed to acquire semaphore permit for block #{}", worker_id, block_number);
-                            continue;
-                        }
-                    };
-                    
-                    debug!("Worker {} processing block #{}", worker_id, block_number);
-                    match block_processor.process_block(block_number as u64).await {
-                        Ok(_) => {
-                            info!("Worker {} ✅ completed block #{}", worker_id, block_number);
-                        }
-                        Err(e) => {
-                            error!("Worker {} ❌ failed to process block #{}: {}", worker_id, block_number, e);
-                            // Continue processing other blocks instead of failing entirely
-                        }
-                    }
-                    drop(permit); // Release permit for next block
-                }
-                info!("Worker {} shutting down", worker_id);
-            });
-            worker_handles.push(worker_handle);
-        }
-
-        // Initial queue population: fill the queue with buffer blocks for better throughput
-        info!("Populating initial queue buffer with up to {} blocks", queue_buffer_size);
-        {
-            let mut next = next_block.lock().await;
-            let start_block = *next;
-            
-            // Fill the entire buffer initially to minimize worker idle time
-            for _ in 0..queue_buffer_size {
-                if *next <= max_block {
-                    match block_sender.send(*next).await {
-                        Ok(_) => {
-                            debug!("Initially queued block #{}", *next);
-                            *next += 1;
-                        }
-                        Err(e) => {
-                            error!("Failed to initially queue block #{}: {}", *next, e);
-                            break;
-                        }
-                    }
-                } else {
-                    break;
-                }
-            }
-            info!("Initial queue buffer populated with blocks {} to {}", start_block, *next - 1);
-        }
-
-        // Monitor and maintain queue until all blocks are processed
-        let monitor_handle = tokio::spawn({
-            let sender = block_sender.clone();
-            let next_block = next_block.clone();
-            async move {
-                loop {
-                    // Check if we need to add more blocks to maintain queue size
-                    tokio::time::sleep(tokio::time::Duration::from_millis(100)).await;
-                    
-                    let mut next = next_block.lock().await;
-                    if *next > max_block {
-                        info!("All blocks queued, monitor shutting down");
-                        break;
-                    }
-                    
-                    // Try to send next block if queue has space
-                    if let Ok(_) = sender.try_send(*next) {
-                        debug!("Monitor queued block #{}", *next);
-                        *next += 1;
-                    }
-                    // If try_send fails, queue is full - this is what we want!
-                }
-                drop(sender); // Signal end of blocks to workers
-            }
-        });
-
-        // Wait for monitor to finish queuing all blocks
-        if let Err(e) = monitor_handle.await {
-            error!("Monitor task failed: {}", e);
-        }
-        
-        // Wait for all workers to complete processing
-        for (worker_id, handle) in worker_handles.into_iter().enumerate() {
-            match handle.await {
-                Ok(_) => info!("Worker {} completed successfully", worker_id),
-                Err(e) => error!("Worker {} failed: {}", worker_id, e),
-            }
-        }
-
-        info!("Completed syncing {} blocks with intelligent queue management ({}x buffer)", remaining_blocks, queue_buffer_size / worker_pool_size);
-        Ok(())
     }
+}
+
+#[derive(Debug)]
+pub struct IndexerStatus {
+    pub is_running: bool,
+    pub next_block_to_fetch: i64,
+    pub latest_network_block: i64,
 }

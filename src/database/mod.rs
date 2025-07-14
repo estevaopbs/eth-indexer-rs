@@ -197,22 +197,34 @@ impl DatabaseService {
 
     /// Insert a new withdrawal
     pub async fn insert_withdrawal(&self, withdrawal: &Withdrawal) -> Result<()> {
-        sqlx::query(
-            r#"
-            INSERT INTO withdrawals (
-                block_number, withdrawal_index, validator_index, address, amount
-            ) VALUES (?, ?, ?, ?, ?)
-            ON CONFLICT(block_number, withdrawal_index) DO NOTHING
-            "#,
+        // First check if withdrawal already exists
+        let existing = sqlx::query_scalar::<_, i64>(
+            "SELECT COUNT(*) FROM withdrawals WHERE block_number = ? AND withdrawal_index = ?"
         )
         .bind(withdrawal.block_number)
         .bind(withdrawal.withdrawal_index)
-        .bind(withdrawal.validator_index)
-        .bind(&withdrawal.address)
-        .bind(&withdrawal.amount)
-        .execute(&self.pool)
+        .fetch_one(&self.pool)
         .await
-        .context("Failed to insert withdrawal")?;
+        .context("Failed to check existing withdrawal")?;
+
+        // Only insert if it doesn't exist
+        if existing == 0 {
+            sqlx::query(
+                r#"
+                INSERT INTO withdrawals (
+                    block_number, withdrawal_index, validator_index, address, amount
+                ) VALUES (?, ?, ?, ?, ?)
+                "#,
+            )
+            .bind(withdrawal.block_number)
+            .bind(withdrawal.withdrawal_index)
+            .bind(withdrawal.validator_index)
+            .bind(&withdrawal.address)
+            .bind(&withdrawal.amount)
+            .execute(&self.pool)
+            .await
+            .context("Failed to insert withdrawal")?;
+        }
 
         Ok(())
     }
@@ -613,13 +625,17 @@ impl DatabaseService {
     }
 
     /// Cache historical transaction count for a specific block
-    pub async fn cache_historical_count(&self, block_number: i64, total_transactions_before: i64) -> Result<()> {
+    pub async fn cache_historical_count(
+        &self,
+        block_number: i64,
+        total_transactions_before: i64,
+    ) -> Result<()> {
         sqlx::query(
             r#"
             INSERT OR REPLACE INTO historical_transaction_cache 
             (block_number, total_transactions_before) 
             VALUES (?, ?)
-            "#
+            "#,
         )
         .bind(block_number)
         .bind(total_transactions_before)
@@ -643,14 +659,17 @@ impl DatabaseService {
     }
 
     /// Get closest cached historical count to a target block
-    pub async fn get_closest_cached_historical_count(&self, target_block: i64) -> Result<Option<(i64, i64)>> {
+    pub async fn get_closest_cached_historical_count(
+        &self,
+        target_block: i64,
+    ) -> Result<Option<(i64, i64)>> {
         let result = sqlx::query_as::<_, (i64, i64)>(
             r#"
             SELECT block_number, total_transactions_before 
             FROM historical_transaction_cache 
             ORDER BY ABS(block_number - ?) 
             LIMIT 1
-            "#
+            "#,
         )
         .bind(target_block)
         .fetch_optional(&self.pool)
@@ -695,7 +714,8 @@ impl DatabaseService {
     pub async fn get_start_block(&self) -> Result<Option<u64>> {
         if let Some(value_str) = self.get_config("start_block").await? {
             if value_str != "0" {
-                let start_block = value_str.parse::<u64>()
+                let start_block = value_str
+                    .parse::<u64>()
                     .context("Failed to parse start_block from database")?;
                 return Ok(Some(start_block));
             }
@@ -705,6 +725,7 @@ impl DatabaseService {
 
     /// Set the start block in database configuration
     pub async fn set_start_block(&self, start_block: u64) -> Result<()> {
-        self.set_config("start_block", &start_block.to_string()).await
+        self.set_config("start_block", &start_block.to_string())
+            .await
     }
 }

@@ -31,6 +31,15 @@ pub async fn get_stats(Extension(app): Extension<Arc<App>>) -> Json<IndexerStats
     let total_transactions = historical_count + total_transactions_indexed;
     let total_transactions_declared_with_history = historical_count + total_transactions_declared;
 
+    // Calculate total_blockchain_transactions based on start_block configuration
+    let total_blockchain_transactions = if start_block < 0 {
+        // When START_BLOCK=-1, we started from the latest block, so total should equal network total
+        app.network_stats.get_total_network_transactions().await.unwrap_or(total_transactions as u64) as i64
+    } else {
+        // Normal case: historical + indexed
+        historical_count + total_transactions_indexed
+    };
+
     // Count accounts (if the table exists)
     let total_accounts: i64 = sqlx::query_as::<_, (i64,)>("SELECT COUNT(*) FROM accounts")
         .fetch_one(&db.pool)
@@ -79,7 +88,7 @@ pub async fn get_stats(Extension(app): Extension<Arc<App>>) -> Json<IndexerStats
         total_transactions_declared: total_transactions_declared_with_history,
         total_transactions_indexed: historical_count + total_transactions_indexed,
         real_transactions_indexed: total_transactions_indexed, // Only transactions from start_block onwards
-        total_blockchain_transactions: historical_count + total_transactions_indexed, // Historical + indexed
+        total_blockchain_transactions, // Use the calculated value
         total_accounts: total_accounts as i64,
         indexer_status: indexer_status.to_string(),
         sync_percentage,

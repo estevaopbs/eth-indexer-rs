@@ -38,16 +38,52 @@ function formatEth(value) {
 
 // Load all data without loading indicators (unified 1-second refresh)
 async function refreshAllData() {
-  try {
-    await Promise.all([
-      loadStats(),
-      loadRecentBlocksDelta(),
-      loadRecentTransactionsDelta()
-    ]);
-  } catch (error) {
-    console.error("Error refreshing data:", error);
-    // Don't show empty tables on error - keep existing content
-  }
+  const refreshPromises = [];
+  
+  // Stats refresh
+  refreshPromises.push(
+    loadStats()
+      .then(() => {
+        dataStatus.stats.available = true;
+        dataStatus.stats.lastUpdate = Date.now();
+      })
+      .catch((error) => {
+        console.error("Error loading stats:", error);
+        dataStatus.stats.available = false;
+      })
+  );
+  
+  // Blocks refresh  
+  refreshPromises.push(
+    loadRecentBlocksDelta()
+      .then(() => {
+        dataStatus.blocks.available = true;
+        dataStatus.blocks.lastUpdate = Date.now();
+      })
+      .catch((error) => {
+        console.error("Error loading blocks:", error);
+        dataStatus.blocks.available = false;
+      })
+  );
+  
+  // Transactions refresh
+  refreshPromises.push(
+    loadRecentTransactionsDelta()
+      .then(() => {
+        dataStatus.transactions.available = true;
+        dataStatus.transactions.lastUpdate = Date.now();
+      })
+      .catch((error) => {
+        console.error("Error loading transactions:", error);
+        dataStatus.transactions.available = false;
+      })
+  );
+  
+  // Wait for all promises to complete (whether successful or failed)
+  await Promise.allSettled(refreshPromises);
+  
+  // Update sync status after all attempts
+  updateSyncStatus();
 }
 
 // Initialize data on first load
@@ -57,7 +93,7 @@ async function initializeData() {
     await loadStats();
 
     // Load initial blocks and set up delta tracking
-    const blocksResponse = await fetch(`${API_BASE}/blocks?per_page=5`);
+    const blocksResponse = await fetch(`${API_BASE}/blocks?per_page=10`);
     if (blocksResponse.ok) {
       const blocksData = await blocksResponse.json();
       if (blocksData.blocks && blocksData.blocks.length > 0) {
@@ -100,7 +136,7 @@ async function initializeData() {
     }
 
     // Load initial transactions and set up delta tracking
-    const txsResponse = await fetch(`${API_BASE}/transactions?per_page=5`);
+    const txsResponse = await fetch(`${API_BASE}/transactions?per_page=10`);
     if (txsResponse.ok) {
       const txsData = await txsResponse.json();
       if (txsData.transactions && txsData.transactions.length > 0) {
@@ -139,9 +175,11 @@ async function initializeData() {
 
   } catch (error) {
     console.error("Error initializing data:", error);
-    showEmptyBlocksTable();
-    showEmptyTransactionsTable();
-    showEmptyCharts();
+    // Mark data as unavailable but don't clear existing content
+    dataStatus.blocks.available = false;
+    dataStatus.transactions.available = false;
+    dataStatus.stats.available = false;
+    updateSyncStatus();
   }
 }
 
@@ -199,6 +237,10 @@ async function loadStats() {
     // Update progress bar
     updateProgressBar(data.latest_block, latestNetworkBlock, data.start_block || 0);
 
+    // Update data status for stats
+    dataStatus.stats.available = true;
+    dataStatus.stats.lastUpdate = Date.now();
+
     // Update status icon color
     const statusIcon = document.getElementById("status-icon");
     if (data.indexer_status === "running") {
@@ -212,6 +254,8 @@ async function loadStats() {
     }
   } catch (error) {
     console.error("Error loading stats:", error);
+    // Mark stats as unavailable
+    dataStatus.stats.available = false;
     throw error; // Re-throw to be caught by refreshAllData
   }
 }
@@ -244,7 +288,7 @@ async function loadRecentBlocks() {
     const controller = new AbortController();
     const timeoutId = setTimeout(() => controller.abort(), 10000); // 10 second timeout
 
-    const response = await fetch(`${API_BASE}/blocks?per_page=5`, { signal: controller.signal });
+    const response = await fetch(`${API_BASE}/blocks?per_page=10`, { signal: controller.signal });
     clearTimeout(timeoutId);
 
     console.log('Blocks response:', response.status);
@@ -309,11 +353,12 @@ async function loadRecentBlocks() {
       createTxsChart(data.blocks.slice().reverse());
     } else {
       console.log('No blocks found, showing empty state');
-      showEmptyBlocksTable();
+      console.log('No blocks data received, keeping existing content');
+      // Don't clear the table - keep existing data
     }
   } catch (error) {
     console.error("Error loading blocks:", error);
-    showEmptyBlocksTable();
+    // Don't clear the table - keep existing data and let status indicator show the issue
     throw error; // Re-throw to be caught by refreshAllData
   }
 }
@@ -321,7 +366,7 @@ async function loadRecentBlocks() {
 // Load recent transactions
 async function loadRecentTransactions() {
   try {
-    const response = await fetch(`${API_BASE}/transactions?per_page=5`);
+    const response = await fetch(`${API_BASE}/transactions?per_page=10`);
 
     if (!response.ok) {
       throw new Error(`API returned ${response.status}`);
@@ -387,11 +432,12 @@ async function loadRecentTransactions() {
         }, 100);
       }
     } else {
-      showEmptyTransactionsTable();
+      console.log('No transactions data received, keeping existing content');
+      // Don't clear the table - keep existing data
     }
   } catch (error) {
     console.error("Error loading transactions:", error);
-    showEmptyTransactionsTable();
+    // Don't clear the table - keep existing data and let status indicator show the issue
     throw error; // Re-throw to be caught by refreshAllData
   }
 }
@@ -553,7 +599,81 @@ function updateNetworkProgress(latestBlock, networkBlock) {
 let lastBlockNumber = 0;
 let lastTransactionHash = '';
 
-// Load initial data
+// Global variables for sync status tracking
+let dataStatus = {
+  blocks: { available: true, lastUpdate: Date.now() },
+  transactions: { available: true, lastUpdate: Date.now() },
+  stats: { available: true, lastUpdate: Date.now() }
+};
+
+// Update sync status indicator
+function updateSyncStatus() {
+  const syncStatusElement = document.getElementById("sync-status");
+  const statusIconElement = document.getElementById("status-icon");
+  
+  if (!syncStatusElement || !statusIconElement) return;
+  
+  const now = Date.now();
+  const staleThreshold = 10000; // 10 seconds
+  
+  // Check if any data source is stale or unavailable
+  const blocksStale = !dataStatus.blocks.available || (now - dataStatus.blocks.lastUpdate) > staleThreshold;
+  const transactionsStale = !dataStatus.transactions.available || (now - dataStatus.transactions.lastUpdate) > staleThreshold;
+  const statsStale = !dataStatus.stats.available || (now - dataStatus.stats.lastUpdate) > staleThreshold;
+  
+  if (blocksStale || transactionsStale || statsStale) {
+    // Some data is stale or unavailable
+    syncStatusElement.textContent = "Data Stale";
+    syncStatusElement.className = "text-2xl font-bold text-orange-600 stat-value";
+    statusIconElement.className = "bg-orange-100 p-3 rounded-full";
+    statusIconElement.innerHTML = `
+      <svg xmlns="http://www.w3.org/2000/svg" class="h-6 w-6 text-orange-600" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-2.5L13.732 4c-.77-.833-1.964-.833-2.732 0L3.732 16.5c-.77.833.192 2.5 1.732 2.5z" />
+      </svg>
+    `;
+    
+    // Add details about what's stale
+    let staleItems = [];
+    if (blocksStale) staleItems.push("blocks");
+    if (transactionsStale) staleItems.push("transactions");
+    if (statsStale) staleItems.push("stats");
+    
+    const detailElement = syncStatusElement.parentElement.querySelector('.text-xs');
+    if (detailElement) {
+      detailElement.textContent = `Stale: ${staleItems.join(', ')}`;
+    }
+  } else if (!dataStatus.blocks.available || !dataStatus.transactions.available || !dataStatus.stats.available) {
+    // Some data is completely unavailable
+    syncStatusElement.textContent = "Partial";
+    syncStatusElement.className = "text-2xl font-bold text-red-600 stat-value";
+    statusIconElement.className = "bg-red-100 p-3 rounded-full";
+    statusIconElement.innerHTML = `
+      <svg xmlns="http://www.w3.org/2000/svg" class="h-6 w-6 text-red-600" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 8v4m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-2.5L13.732 4c-.77-.833-1.964-.833-2.732 0L3.732 16.5c-.77.833.192 2.5 1.732 2.5z" />
+      </svg>
+    `;
+    
+    const detailElement = syncStatusElement.parentElement.querySelector('.text-xs');
+    if (detailElement) {
+      detailElement.textContent = "Some data unavailable";
+    }
+  } else {
+    // All data is available and fresh
+    syncStatusElement.textContent = "Active";
+    syncStatusElement.className = "text-2xl font-bold text-green-600 stat-value";
+    statusIconElement.className = "bg-green-100 p-3 rounded-full";
+    statusIconElement.innerHTML = `
+      <svg xmlns="http://www.w3.org/2000/svg" class="h-6 w-6 text-green-600" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
+      </svg>
+    `;
+    
+    const detailElement = syncStatusElement.parentElement.querySelector('.text-xs');
+    if (detailElement) {
+      detailElement.textContent = "All systems operational";
+    }
+  }
+}
 document.addEventListener("DOMContentLoaded", () => {
   // Initialize data on first load
   initializeData();
@@ -563,6 +683,10 @@ document.addEventListener("DOMContentLoaded", () => {
   setTimeout(() => {
     setInterval(refreshAllData, refreshInterval);
   }, 2000); // Wait 2 seconds before starting delta updates
+  
+  // Update sync status immediately and then every second
+  updateSyncStatus();
+  setInterval(updateSyncStatus, 1000);
 });
 
 // Show/hide frequent data updating indicator
@@ -689,7 +813,12 @@ function showEmptyCharts() {
             title: { display: true, text: 'Gas Units' }
           },
           x: {
-            title: { display: true, text: 'Recent Blocks' }
+            title: { display: true, text: 'Recent Blocks' },
+            ticks: {
+              maxRotation: 45,
+              minRotation: 45,
+              maxTicksLimit: 10
+            }
           }
         },
         plugins: {
@@ -746,7 +875,12 @@ function showEmptyCharts() {
             title: { display: true, text: 'Transaction Count' }
           },
           x: {
-            title: { display: true, text: 'Recent Blocks' }
+            title: { display: true, text: 'Recent Blocks' },
+            ticks: {
+              maxRotation: 45,
+              minRotation: 45,
+              maxTicksLimit: 10
+            }
           }
         },
         plugins: {
@@ -850,6 +984,11 @@ function createGasChart(blocks) {
           title: {
             display: true,
             text: 'Recent Blocks'
+          },
+          ticks: {
+            maxRotation: 45,
+            minRotation: 45,
+            maxTicksLimit: 10
           }
         }
       },
@@ -989,6 +1128,11 @@ function createTxsChart(blocks) {
           title: {
             display: true,
             text: 'Recent Blocks'
+          },
+          ticks: {
+            maxRotation: 45,
+            minRotation: 45,
+            maxTicksLimit: 10
           }
         }
       },
@@ -1081,14 +1225,14 @@ async function loadRecentBlocksDelta() {
       }
 
       // Insert new rows at the beginning and remove excess rows from the end
-      const maxRows = 5;
+      const maxRows = 10;
 
       // Insert new rows at the beginning
       for (let i = newRows.length - 1; i >= 0; i--) {
         blocksList.insertBefore(newRows[i], blocksList.firstChild);
       }
 
-      // Remove excess rows from the end to maintain max 5 rows
+      // Remove excess rows from the end to maintain max 10 rows
       while (blocksList.children.length > maxRows) {
         blocksList.removeChild(blocksList.lastChild);
       }
@@ -1105,8 +1249,8 @@ async function loadRecentBlocksDelta() {
         // Combine new blocks (chronological) with existing blocks (chronological)
         const updatedBlockData = [...currentBlockData, ...newBlocksChronological];
 
-        // Keep only the 5 most recent blocks (take from the end since they're in chronological order)
-        const chartBlockData = updatedBlockData.slice(-5);
+        // Keep only the 10 most recent blocks (take from the end since they're in chronological order)
+        const chartBlockData = updatedBlockData.slice(-10);
 
         // Charts need blocks in chronological order (oldest first) - which we already have
         createGasChart(chartBlockData);
@@ -1117,10 +1261,10 @@ async function loadRecentBlocksDelta() {
       await loadRecentBlocks();
     } else {
       // No new blocks but we need to ensure we have 5 blocks displayed
-      // Check if we have less than 5 blocks in the table
+      // Check if we have less than 10 blocks in the table
       const blocksList = document.getElementById("recent-blocks");
-      if (blocksList && blocksList.children.length < 5) {
-        // Force a full reload to ensure we have 5 blocks
+      if (blocksList && blocksList.children.length < 10) {
+        // Force a full reload to ensure we have 10 blocks
         await loadRecentBlocks();
       }
     }
@@ -1132,11 +1276,10 @@ async function loadRecentBlocksDelta() {
         await loadRecentBlocks();
       } catch (fallbackError) {
         console.error("Fallback load also failed:", fallbackError);
-        showEmptyBlocksTable();
+        // Don't clear table - keep existing data
       }
-    } else {
-      showEmptyBlocksTable();
     }
+    // Don't clear table on delta errors - keep existing data
     throw error;
   }
 }
@@ -1188,14 +1331,14 @@ async function loadRecentTransactionsDelta() {
       }
 
       // Insert new rows at the beginning and remove excess rows from the end
-      const maxRows = 5;
+      const maxRows = 10;
 
       // Insert new rows at the beginning
       for (let i = newRows.length - 1; i >= 0; i--) {
         txsList.insertBefore(newRows[i], txsList.firstChild);
       }
 
-      // Remove excess rows from the end to maintain max 5 rows
+      // Remove excess rows from the end to maintain max 10 rows
       while (txsList.children.length > maxRows) {
         txsList.removeChild(txsList.lastChild);
       }
@@ -1211,11 +1354,10 @@ async function loadRecentTransactionsDelta() {
         await loadRecentTransactions();
       } catch (fallbackError) {
         console.error("Fallback load also failed:", fallbackError);
-        showEmptyTransactionsTable();
+        // Don't clear table - keep existing data
       }
-    } else {
-      showEmptyTransactionsTable();
     }
+    // Don't clear table on delta errors - keep existing data
     throw error;
   }
 }
