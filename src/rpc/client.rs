@@ -362,4 +362,28 @@ impl RpcClient {
             _ => Err(anyhow::anyhow!("Unexpected response type")),
         }
     }
+
+    /// Get bytecode at an address
+    pub async fn get_code(&self, address: &str, block_number: Option<u64>) -> Result<String> {
+        let addr = address
+            .parse::<ethers::core::types::H160>()
+            .context(format!("Invalid Ethereum address: {}", address))?;
+
+        let code = match block_number {
+            Some(num) => {
+                self.provider
+                    .get_code(
+                        addr,
+                        Some(ethers::core::types::BlockId::Number(BlockNumber::Number(
+                            U64::from(num),
+                        ))),
+                    )
+                    .await
+            }
+            None => self.provider.get_code(addr, None).await,
+        }
+        .context(format!("Failed to get code for address: {}", address))?;
+
+        Ok(format!("0x{}", hex::encode(code)))
+    }
 }

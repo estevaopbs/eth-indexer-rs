@@ -8,7 +8,7 @@ use anyhow::{Context, Result};
 use ethers::core::types::{Log as EthLog, Transaction as EthTransaction, TransactionReceipt};
 use std::{collections::HashMap, sync::Arc};
 use tokio::sync::RwLock;
-use tracing::{debug, error, info, warn};
+use tracing::{debug, error, warn};
 
 /// Processor for handling transaction data
 #[derive(Clone)]
@@ -139,7 +139,7 @@ impl TransactionProcessor {
         let all_accounts = self
             .prepare_accounts_batch(&unique_addresses, block_number)
             .await?;
-        info!(
+        debug!(
             "Prepared {} accounts for batch insertion",
             all_accounts.len()
         );
@@ -397,7 +397,7 @@ impl TransactionProcessor {
                 .discover_token(&transfer.token_address, block_number)
                 .await
             {
-                error!("Failed to discover token {}: {}", transfer.token_address, e);
+                debug!("Failed to discover token {}: {}", transfer.token_address, e);
             } else {
                 debug!("Token discovery completed for {}", transfer.token_address);
             }
@@ -410,7 +410,7 @@ impl TransactionProcessor {
             ));
         }
 
-        info!(
+        debug!(
             "Collected {} token balance updates for block {}",
             token_updates.len(),
             block_number

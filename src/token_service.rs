@@ -135,7 +135,7 @@ impl TokenService {
         transfers: &[(String, String, String)], // (token_address, from_address, to_address)
         block_number: i64,
     ) -> Result<()> {
-        info!(
+        debug!(
             "Starting balance updates for {} transfers at block {}",
             transfers.len(),
             block_number

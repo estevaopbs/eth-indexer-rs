@@ -120,7 +120,7 @@ pub async fn get_blocks_since(
     let blocks = match sqlx::query_as::<_, crate::database::Block>(
         r#"
         SELECT number, hash, parent_hash, timestamp, gas_used, gas_limit, transaction_count,
-               miner, total_difficulty, size_bytes, base_fee_per_gas, extra_data, state_root,
+               miner, difficulty, size_bytes, base_fee_per_gas, extra_data, state_root,
                nonce, withdrawals_root, blob_gas_used, excess_blob_gas, withdrawal_count,
                slot, proposer_index, epoch, slot_root, parent_root, beacon_deposit_count,
                graffiti, randao_reveal, randao_mix

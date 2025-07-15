@@ -1,4 +1,7 @@
-use axum::{extract::{Path, Query}, Extension, Json};
+use axum::{
+    extract::{Path, Query},
+    Extension, Json,
+};
 use serde::Deserialize;
 use serde_json::json;
 use std::sync::Arc;
@@ -22,8 +25,18 @@ pub async fn get_account(
 
     // Get account from DB
     if let Ok(Some(account)) = db.get_account_by_address(&address).await {
+        // Determine account type based on transaction count and blockchain state
+        let account_type = determine_account_type(&account, &app).await;
+
         return Json(json!({
-            "account": account
+            "account": {
+                "address": account.address,
+                "balance": account.balance,
+                "transaction_count": account.transaction_count,
+                "account_type": account_type,
+                "first_seen_block": account.first_seen_block,
+                "last_seen_block": account.last_seen_block
+            }
         }));
     }
 
@@ -38,8 +51,17 @@ pub async fn get_account(
                 last_seen_block: 0,
             };
 
+            let account_type = determine_account_type(&account, &app).await;
+
             return Json(json!({
-                "account": account,
+                "account": {
+                    "address": account.address,
+                    "balance": account.balance,
+                    "transaction_count": account.transaction_count,
+                    "account_type": account_type,
+                    "first_seen_block": account.first_seen_block,
+                    "last_seen_block": account.last_seen_block
+                },
                 "note": "Account not yet indexed, basic info retrieved from blockchain"
             }));
         }
@@ -57,36 +79,39 @@ pub async fn get_accounts(
     Extension(app): Extension<Arc<App>>,
 ) -> Json<serde_json::Value> {
     let db = &app.db;
-    
+
     let page = query.page.unwrap_or(1).max(1);
     let per_page = query.per_page.unwrap_or(50).min(100);
     let sort = query.sort.unwrap_or_else(|| "balance".to_string());
     let order = query.order.unwrap_or_else(|| "desc".to_string());
-    
+
     let offset = (page - 1) * per_page;
-    
+
     // Build the SQL query based on sort and order
     let order_clause = match sort.as_str() {
         "balance" => "balance",
-        "transaction_count" => "transaction_count", 
+        "transaction_count" => "transaction_count",
         "first_seen" => "first_seen_block",
         "last_activity" => "last_seen_block",
         _ => "balance", // default
     };
-    
+
     let order_direction = match order.as_str() {
         "asc" => "ASC",
         _ => "DESC", // default desc
     };
-    
+
     let query_str = format!(
         "SELECT address, balance, transaction_count, first_seen_block, last_seen_block 
          FROM accounts 
          ORDER BY {} {} 
          LIMIT {} OFFSET {}",
-        order_clause, order_direction, per_page + 1, offset
+        order_clause,
+        order_direction,
+        per_page + 1,
+        offset
     );
-    
+
     match sqlx::query_as::<_, Account>(&query_str)
         .fetch_all(&db.pool)
         .await
@@ -96,7 +121,7 @@ pub async fn get_accounts(
             if has_next {
                 accounts.pop(); // Remove the extra item
             }
-            
+
             // Add account_type field based on some heuristics
             let accounts_with_type: Vec<serde_json::Value> = accounts
                 .into_iter()
@@ -106,7 +131,7 @@ pub async fn get_accounts(
                     } else {
                         "unknown"
                     };
-                    
+
                     json!({
                         "address": account.address,
                         "balance": account.balance,
@@ -117,7 +142,7 @@ pub async fn get_accounts(
                     })
                 })
                 .collect();
-            
+
             Json(json!({
                 "accounts": accounts_with_type,
                 "has_next": has_next,
@@ -125,14 +150,41 @@ pub async fn get_accounts(
                 "per_page": per_page
             }))
         }
-        Err(e) => {
-            Json(json!({
-                "error": format!("Failed to fetch accounts: {}", e),
-                "accounts": [],
-                "has_next": false,
-                "page": page,
-                "per_page": per_page
-            }))
+        Err(e) => Json(json!({
+            "error": format!("Failed to fetch accounts: {}", e),
+            "accounts": [],
+            "has_next": false,
+            "page": page,
+            "per_page": per_page
+        })),
+    }
+}
+
+/// Determine account type based on transaction count and blockchain state
+async fn determine_account_type(account: &Account, app: &App) -> &'static str {
+    // If account has made transactions, it's likely an EOA (Externally Owned Account)
+    if account.transaction_count > 0 {
+        return "eoa";
+    }
+
+    // Check if the address is a smart contract by getting code
+    match app.rpc.get_code(&account.address, None).await {
+        Ok(code) => {
+            // If there's bytecode at the address, it's a contract
+            if !code.is_empty() && code != "0x" {
+                "contract"
+            } else {
+                // No code and no transactions - could be an unused EOA
+                "eoa"
+            }
+        }
+        Err(_) => {
+            // RPC error - default based on transaction count
+            if account.transaction_count > 0 {
+                "eoa"
+            } else {
+                "unknown"
+            }
         }
     }
 }

@@ -11,7 +11,7 @@ CREATE TABLE IF NOT EXISTS blocks (
     transaction_count INTEGER NOT NULL,
     miner TEXT,
     base_fee_per_gas TEXT,
-    total_difficulty TEXT,
+    difficulty TEXT,
     size_bytes INTEGER,
     extra_data TEXT,
     state_root TEXT,

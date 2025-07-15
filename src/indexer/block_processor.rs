@@ -97,7 +97,7 @@ impl BlockProcessor {
                 .await
             {
                 Ok((all_transactions, all_logs, all_token_transfers, all_accounts)) => {
-                    info!(
+                    debug!(
                         "Block #{} collected data: {} transactions, {} logs, {} token_transfers, {} accounts",
                         block_number,
                         all_transactions.len(),
@@ -216,7 +216,7 @@ impl BlockProcessor {
             gas_limit: eth_block.gas_limit.as_u64() as i64,
             transaction_count: eth_block.transactions.len() as i64,
             miner: Some(format!("{:?}", eth_block.author)),
-            total_difficulty: eth_block.total_difficulty.map(|td| td.to_string()),
+            difficulty: Some(eth_block.difficulty.to_string()),
             size_bytes: eth_block.size.map(|s| s.as_u64() as i64),
             base_fee_per_gas: base_fee,
             extra_data: Some(format!("{:?}", eth_block.extra_data)),

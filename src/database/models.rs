@@ -14,7 +14,7 @@ pub struct Block {
 
     // Extended fields available from RPC
     pub miner: Option<String>,            // Fee recipient
-    pub total_difficulty: Option<String>, // Total difficulty
+    pub difficulty: Option<String>,       // Block difficulty (legacy, only available pre-merge)
     pub size_bytes: Option<i64>,          // Block size in bytes
     pub base_fee_per_gas: Option<String>, // Base fee per gas (EIP-1559)
     pub extra_data: Option<String>,       // Extra data
@@ -287,7 +287,7 @@ pub struct BlockResponse {
 
     // Extended fields available from RPC
     pub miner: Option<String>,
-    pub total_difficulty: Option<String>,
+    pub difficulty: Option<String>,
     pub size_bytes: Option<i64>,
     pub base_fee_per_gas: Option<String>,
     pub extra_data: Option<String>,
@@ -332,7 +332,7 @@ impl From<&Block> for BlockResponse {
             gas_limit: block.gas_limit,
             transaction_count: block.transaction_count,
             miner: block.miner.clone(),
-            total_difficulty: block.total_difficulty.clone(),
+            difficulty: block.difficulty.clone(),
             size_bytes: block.size_bytes,
             base_fee_per_gas: block.base_fee_per_gas.clone(),
             extra_data: block.extra_data.clone(),

@@ -145,7 +145,7 @@ function displayBlockDetails(block) {
     { label: "State Root", value: block.state_root, copyable: true },
     { label: "Nonce", value: formatNonce(block.nonce) },
     { label: "Extra Data", value: formatExtraData(block.extra_data) },
-    { label: "Total Difficulty", value: block.total_difficulty || "N/A" },
+    { label: "Difficulty", value: block.difficulty || "N/A (Post-Merge)" },
     { label: "Withdrawals Root", value: block.withdrawals_root || "N/A", copyable: !!block.withdrawals_root },
     { label: "Withdrawal Count", value: formatNumber(block.withdrawal_count) || "0" },
     { label: "Blob Gas Used", value: formatBlobGas(block.blob_gas_used) },

@@ -60,7 +60,7 @@ impl DatabaseService {
             r#"
             INSERT INTO blocks (
                 number, hash, parent_hash, timestamp, gas_used, gas_limit, transaction_count,
-                miner, total_difficulty, size_bytes, base_fee_per_gas, extra_data, state_root,
+                miner, difficulty, size_bytes, base_fee_per_gas, extra_data, state_root,
                 nonce, withdrawals_root, blob_gas_used, excess_blob_gas, withdrawal_count,
                 slot, proposer_index, epoch, slot_root, parent_root, beacon_deposit_count,
                 graffiti, randao_reveal, randao_mix
@@ -73,7 +73,7 @@ impl DatabaseService {
                 gas_limit = excluded.gas_limit,
                 transaction_count = excluded.transaction_count,
                 miner = excluded.miner,
-                total_difficulty = excluded.total_difficulty,
+                difficulty = excluded.difficulty,
                 size_bytes = excluded.size_bytes,
                 base_fee_per_gas = excluded.base_fee_per_gas,
                 extra_data = excluded.extra_data,
@@ -102,7 +102,7 @@ impl DatabaseService {
         .bind(block.gas_limit)
         .bind(block.transaction_count)
         .bind(&block.miner)
-        .bind(&block.total_difficulty)
+        .bind(&block.difficulty)
         .bind(block.size_bytes)
         .bind(&block.base_fee_per_gas)
         .bind(&block.extra_data)
@@ -585,7 +585,7 @@ impl DatabaseService {
         let result = sqlx::query_as::<_, Block>(
             r#"
             SELECT number, hash, parent_hash, timestamp, gas_used, gas_limit, transaction_count,
-                   miner, total_difficulty, size_bytes, base_fee_per_gas, extra_data, state_root,
+                   miner, difficulty, size_bytes, base_fee_per_gas, extra_data, state_root,
                    nonce, withdrawals_root, blob_gas_used, excess_blob_gas, withdrawal_count,
                    slot, proposer_index, epoch, slot_root, parent_root, beacon_deposit_count,
                    graffiti, randao_reveal, randao_mix
@@ -606,7 +606,7 @@ impl DatabaseService {
         let result = sqlx::query_as::<_, Block>(
             r#"
             SELECT number, hash, parent_hash, timestamp, gas_used, gas_limit, transaction_count,
-                   miner, total_difficulty, size_bytes, base_fee_per_gas, extra_data, state_root,
+                   miner, difficulty, size_bytes, base_fee_per_gas, extra_data, state_root,
                    nonce, withdrawals_root, blob_gas_used, excess_blob_gas, withdrawal_count,
                    slot, proposer_index, epoch, slot_root, parent_root, beacon_deposit_count,
                    graffiti, randao_reveal, randao_mix
@@ -698,7 +698,7 @@ impl DatabaseService {
             r#"
             SELECT 
                 number, hash, parent_hash, timestamp, gas_used, gas_limit, transaction_count,
-                miner, total_difficulty, size_bytes, base_fee_per_gas, extra_data, state_root,
+                miner, difficulty, size_bytes, base_fee_per_gas, extra_data, state_root,
                 nonce, withdrawals_root, blob_gas_used, excess_blob_gas, withdrawal_count,
                 slot, proposer_index, epoch, slot_root, parent_root, beacon_deposit_count,
                 graffiti, randao_reveal, randao_mix
