@@ -66,7 +66,7 @@ async function loadTransactions(page = 1, per_page = 20) {
     
     const data = await response.json();
     displayTransactions(data.transactions || []);
-    updatePagination(page, data.has_next || false);
+    updatePagination(page, data.pagination?.has_next || false);
     
   } catch (error) {
     console.error("Error loading transactions:", error);
@@ -203,55 +203,6 @@ function handleSearchKeyPress(event) {
   }
 }
 
-// Apply filters
-function applyFilters() {
-  const statusFilter = document.getElementById("status-filter").value;
-  
-  // Build filter parameters
-  const filterParams = new URLSearchParams({
-    page: '1', // Reset to first page when filtering
-    per_page: perPage.toString()
-  });
-  
-  if (statusFilter && statusFilter !== 'all') {
-    filterParams.append('status', statusFilter);
-  }
-  
-  // Load filtered transactions
-  loadFilteredTransactions(filterParams);
-}
-
-// Load transactions with filters
-async function loadFilteredTransactions(filterParams) {
-  if (isLoading) return;
-  isLoading = true;
-  
-  showLoading();
-  hideError();
-  
-  try {
-    const response = await fetch(`${API_BASE}/transactions/filtered?${filterParams.toString()}`);
-    
-    if (!response.ok) {
-      throw new Error(`API returned ${response.status}`);
-    }
-    
-    const data = await response.json();
-    displayTransactions(data.transactions || []);
-    updatePagination(parseInt(filterParams.get('page') || '1'), data.pagination?.has_next || false);
-    
-    // Update current page to reflect filters
-    currentPage = parseInt(filterParams.get('page') || '1');
-    
-  } catch (error) {
-    console.error("Error loading filtered transactions:", error);
-    showError();
-  } finally {
-    isLoading = false;
-    hideLoading();
-  }
-}
-
 // Initialize page
 document.addEventListener("DOMContentLoaded", function() {
   // Load initial data
@@ -277,6 +228,4 @@ document.addEventListener("DOMContentLoaded", function() {
   document.getElementById("retry-btn").addEventListener("click", function() {
     loadTransactions(currentPage, perPage);
   });
-  
-  document.getElementById("apply-filters").addEventListener("click", applyFilters);
 });

@@ -216,7 +216,7 @@ impl BeaconClient {
                             })
                         }
                     };
-
+                info!("Fetched beacon data for block {}", block_number);
                 Ok(BeaconRpcResponse::BeaconDataForBlock(beacon_data))
             }
             BeaconRpcOperation::TestConnection => {

@@ -686,7 +686,7 @@ document.addEventListener("DOMContentLoaded", () => {
   initializeData();
 
   // After initialization, refresh all data every 1 second using delta updates
-  const refreshInterval = 1000; // 1 second
+  const refreshInterval = 2000; // 2 second
   setTimeout(() => {
     setInterval(refreshAllData, refreshInterval);
   }, 2000); // Wait 2 seconds before starting delta updates
@@ -1043,7 +1043,7 @@ function updateProgressBar(currentBlock, networkBlock, startBlock = 0) {
   if (networkBlock > 0 && progressBar && currentBlockProgress) {
     // Calculate progress from start block to network block
     const totalBlocks = networkBlock - startBlock;
-    const processedBlocks = Math.max(0, currentBlock - startBlock);
+    const processedBlocks = Math.max(0, currentBlock - startBlock + 1);
     const percentage = totalBlocks > 0 ? Math.min((processedBlocks / totalBlocks) * 100, 100) : 0;
 
     progressBar.style.width = `${percentage}%`;

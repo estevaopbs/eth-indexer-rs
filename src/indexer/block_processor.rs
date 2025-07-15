@@ -48,10 +48,20 @@ impl BlockProcessor {
 
         // Convert to our Block model and save
         let block = self.convert_block(&eth_block).await?;
+
+        let block_insert_start = std::time::Instant::now();
         self.db.insert_block(&block).await?;
+        let block_insert_time = block_insert_start.elapsed();
+
+        debug!(
+            "Block #{} insert time: {}ms",
+            block_number,
+            block_insert_time.as_millis()
+        );
 
         // Process withdrawals if present (Shanghai fork)
         if let Some(withdrawals) = &eth_block.withdrawals {
+            let withdrawals_start = std::time::Instant::now();
             for (index, withdrawal) in withdrawals.iter().enumerate() {
                 let withdrawal_data = Withdrawal {
                     id: None,
@@ -67,6 +77,12 @@ impl BlockProcessor {
                     error!("Failed to insert withdrawal {}: {}", index, e);
                 }
             }
+            let withdrawals_time = withdrawals_start.elapsed();
+            debug!(
+                "Block #{} withdrawals processing time: {}ms",
+                block_number,
+                withdrawals_time.as_millis()
+            );
         }
 
         if !eth_block.transactions.is_empty() {
@@ -107,6 +123,8 @@ impl BlockProcessor {
                     );
 
                     // Batch insert all data at once for maximum performance
+                    let batch_db_start = std::time::Instant::now();
+
                     if !all_transactions.is_empty() {
                         if let Err(e) = self.db.insert_transactions_batch(&all_transactions).await {
                             error!("Failed to batch insert transactions: {}", e);
@@ -155,11 +173,13 @@ impl BlockProcessor {
                         info!("No accounts to insert for block #{}", block_number);
                     }
 
+                    let batch_db_time = batch_db_start.elapsed();
+
                     info!("Block #{} performance: block_fetch={}ms, receipts_fetch={}ms, batch_db={}ms, total={}ms", 
                           block_number,
                           block_fetch_time.as_millis(),
                           receipts_time.as_millis(),
-                          0, // TODO: add db timing
+                          batch_db_time.as_millis(),
                           start_time.elapsed().as_millis());
                 }
                 Err(e) => {
@@ -170,14 +190,6 @@ impl BlockProcessor {
                 }
             }
         }
-
-        let total_time = start_time.elapsed();
-        info!(
-            "Block #{} completed in {}ms",
-            block_number,
-            total_time.as_millis()
-        );
-
         Ok(())
     }
 

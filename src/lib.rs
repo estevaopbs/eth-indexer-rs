@@ -25,6 +25,7 @@ use std::sync::Arc;
 use tracing::{error, info};
 
 /// Represents the core application with all its services
+#[derive(Clone)]
 pub struct App {
     pub config: AppConfig,
     pub db: Arc<DatabaseService>,
@@ -39,11 +40,7 @@ pub struct App {
 
 impl App {
     /// Initialize a new application instance
-    pub async fn init() -> Result<Self> {
-        // Load configuration
-        let mut config = AppConfig::load()?;
-        info!("Config loaded: {}", config);
-
+    pub async fn init(mut config: AppConfig) -> Result<Self> {
         // Initialize database
         let db = Arc::new(DatabaseService::new(&config.database_url).await?);
         info!("Database initialized");

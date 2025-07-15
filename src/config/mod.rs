@@ -36,6 +36,9 @@ pub struct AppConfig {
     pub block_fetch_interval_seconds: Option<u32>, // Polling interval for new blocks
     pub worker_timeout_seconds: u64,     // Timeout for workers waiting for blocks (seconds)
     pub bigquery_service_account_path: Option<String>,
+
+    // Logging Configuration
+    pub log_level: String, // Log level for tracing (e.g., "info", "debug", "error")
 }
 
 #[derive(Error, Debug)]
@@ -142,6 +145,7 @@ impl AppConfig {
                 .and_then(|n| n.parse().ok())
                 .unwrap_or(30),
             bigquery_service_account_path: env::var("BIGQUERY_SERVICE_ACCOUNT_PATH").ok(),
+            log_level: env::var("LOG_LEVEL").unwrap_or_else(|_| "info".to_string()),
         };
 
         // Ensure data directory exists

@@ -1,17 +1,22 @@
+use eth_indexer_rs::config::AppConfig;
 use eth_indexer_rs::{api, App};
 use std::sync::Arc;
-use tracing::error;
+use tracing::{error, info};
 use tracing_subscriber::{layer::SubscriberExt, util::SubscriberInitExt};
 
 #[tokio::main]
 async fn main() -> anyhow::Result<()> {
-    let log_level = std::env::var("LOG_LEVEL").unwrap_or_else(|_| "info".to_string());
+    let app_config = AppConfig::load()?;
+    info!("Application configuration loaded");
+
     tracing_subscriber::registry()
-        .with(tracing_subscriber::EnvFilter::new(log_level))
+        .with(tracing_subscriber::EnvFilter::new(
+            app_config.log_level.clone(),
+        ))
         .with(tracing_subscriber::fmt::layer())
         .init();
 
-    let app = match App::init().await {
+    let app = match App::init(app_config).await {
         Ok(app) => Arc::new(app),
         Err(e) => {
             error!("Failed to initialize application: {}", e);

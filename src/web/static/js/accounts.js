@@ -3,8 +3,6 @@
 const API_BASE = "/api";
 let currentPage = 1;
 let perPage = 20;
-let currentSort = "balance";
-let sortOrder = "desc";
 let isLoading = false;
 
 // Format number with commas
@@ -70,7 +68,7 @@ function getAccountTypeBadge(type) {
 }
 
 // Load accounts from API
-async function loadAccounts(page = 1, per_page = 20, sort = currentSort, order = sortOrder) {
+async function loadAccounts(page = 1, per_page = 20) {
   if (isLoading) return;
   isLoading = true;
   
@@ -78,7 +76,7 @@ async function loadAccounts(page = 1, per_page = 20, sort = currentSort, order =
   hideError();
   
   try {
-    const response = await fetch(`${API_BASE}/accounts?page=${page}&per_page=${per_page}&sort=${sort}&order=${order}`);
+    const response = await fetch(`${API_BASE}/accounts?page=${page}&per_page=${per_page}`);
     
     if (!response.ok) {
       throw new Error(`API returned ${response.status}`);
@@ -147,39 +145,6 @@ function viewAccount(address) {
   window.location.href = `/account-detail.html?address=${address}`;
 }
 
-// Handle sorting
-function handleSort(sortBy) {
-  if (currentSort === sortBy) {
-    // Toggle sort order
-    sortOrder = sortOrder === "desc" ? "asc" : "desc";
-  } else {
-    // New sort column
-    currentSort = sortBy;
-    sortOrder = "desc";
-  }
-  
-  // Update sort indicators
-  updateSortIndicators();
-  
-  // Reload data
-  currentPage = 1;
-  loadAccounts(currentPage, perPage, currentSort, sortOrder);
-}
-
-// Update sort indicators in table headers
-function updateSortIndicators() {
-  // Clear all indicators
-  document.querySelectorAll('.sort-indicator').forEach(indicator => {
-    indicator.innerHTML = '↕️';
-  });
-  
-  // Set current sort indicator
-  const indicator = document.querySelector(`[data-sort="${currentSort}"] .sort-indicator`);
-  if (indicator) {
-    indicator.innerHTML = sortOrder === "desc" ? "↓" : "↑";
-  }
-}
-
 // Update pagination controls
 function updatePagination(page, hasNext) {
   currentPage = page;
@@ -236,103 +201,29 @@ function handleSearchKeyPress(event) {
   }
 }
 
-// Apply filters
-function applyFilters() {
-  const typeFilter = document.getElementById("type-filter").value;
-  
-  // Build filter parameters
-  const filterParams = new URLSearchParams({
-    page: '1', // Reset to first page when filtering
-    per_page: perPage.toString(),
-    sort: currentSort,
-    order: sortOrder
-  });
-  
-  if (typeFilter && typeFilter !== 'all') {
-    filterParams.append('account_type', typeFilter);
-  }
-  
-  // Load filtered accounts
-  loadFilteredAccounts(filterParams);
-}
-
-// Load accounts with filters
-async function loadFilteredAccounts(filterParams) {
-  if (isLoading) return;
-  isLoading = true;
-  
-  showLoading();
-  hideError();
-  
-  try {
-    const response = await fetch(`${API_BASE}/accounts/filtered?${filterParams.toString()}`);
-    
-    if (!response.ok) {
-      throw new Error(`API returned ${response.status}`);
-    }
-    
-    const data = await response.json();
-    displayAccounts(data.accounts || []);
-    updatePagination(parseInt(filterParams.get('page') || '1'), data.pagination?.has_next || false);
-    
-    // Update current page to reflect filters
-    currentPage = parseInt(filterParams.get('page') || '1');
-    
-  } catch (error) {
-    console.error("Error loading filtered accounts:", error);
-    showError();
-  } finally {
-    isLoading = false;
-    hideLoading();
-  }
-}
-
 // Initialize page
 document.addEventListener("DOMContentLoaded", function() {
   // Load initial data
   loadAccounts();
   
-  // Setup sort indicators
-  updateSortIndicators();
-  
   // Setup event listeners
   document.getElementById("per-page-select").addEventListener("change", function() {
     perPage = parseInt(this.value);
     currentPage = 1;
-    loadAccounts(currentPage, perPage, currentSort, sortOrder);
-  });
-  
-  // Setup sort dropdown listener
-  document.getElementById("sort-select").addEventListener("change", function() {
-    const sortValue = this.value;
-    const [sort, order] = sortValue.split('_');
-    currentSort = sort;
-    sortOrder = order;
-    currentPage = 1;
-    loadAccounts(currentPage, perPage, currentSort, sortOrder);
+    loadAccounts(currentPage, perPage);
   });
   
   document.getElementById("prev-page").addEventListener("click", function() {
     if (currentPage > 1) {
-      loadAccounts(currentPage - 1, perPage, currentSort, sortOrder);
+      loadAccounts(currentPage - 1, perPage);
     }
   });
   
   document.getElementById("next-page").addEventListener("click", function() {
-    loadAccounts(currentPage + 1, perPage, currentSort, sortOrder);
+    loadAccounts(currentPage + 1, perPage);
   });
   
   document.getElementById("retry-btn").addEventListener("click", function() {
-    loadAccounts(currentPage, perPage, currentSort, sortOrder);
-  });
-  
-  document.getElementById("apply-filters").addEventListener("click", applyFilters);
-  
-  // Setup sort click handlers
-  document.querySelectorAll('[data-sort]').forEach(header => {
-    header.addEventListener('click', function() {
-      const sortBy = this.getAttribute('data-sort');
-      handleSort(sortBy);
-    });
+    loadAccounts(currentPage, perPage);
   });
 });

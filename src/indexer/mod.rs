@@ -203,7 +203,7 @@ impl IndexerService {
                 {
                     Ok(blocks_queued) => {
                         if blocks_queued > 0 {
-                            debug!("Fetcher queued {} new blocks", blocks_queued);
+                            info!("Fetcher queued {} new blocks", blocks_queued);
                         }
                     }
                     Err(e) => {
@@ -244,7 +244,7 @@ impl IndexerService {
         while block_to_queue <= current_network_block {
             match sender.try_send(block_to_queue) {
                 Ok(_) => {
-                    debug!("Fetcher queued block #{}", block_to_queue);
+                    info!("Fetcher queued block #{}", block_to_queue);
                     block_to_queue += 1;
                     blocks_queued += 1;
                 }
@@ -339,7 +339,7 @@ impl IndexerService {
                         }
                     };
 
-                    debug!("Worker {} processing block #{}", worker_id, block_number);
+                    info!("Worker {} processing block #{}", worker_id, block_number);
                     match block_processor.process_block(block_number as u64).await {
                         Ok(_) => {
                             info!("Worker {} completed block #{}", worker_id, block_number);
