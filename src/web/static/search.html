@@ -1,0 +1,274 @@
+<!DOCTYPE html>
+<html lang="en" class="h-full bg-gray-50">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Search - Ethereum Indexer</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link rel="stylesheet" href="/styles.css" />
+  </head>
+  <body class="h-full">
+    <div class="min-h-full">
+      <!-- Navigation -->
+      <nav class="bg-white border-b border-gray-200">
+        <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+          <div class="flex justify-between h-16">
+            <div class="flex">
+              <div class="flex-shrink-0 flex items-center">
+                <a href="/" class="text-xl font-bold text-blue-600"
+                  >Ethereum Indexer</a
+                >
+              </div>
+              <div class="hidden sm:ml-6 sm:flex sm:space-x-8">
+                <a
+                  href="/"
+                  class="text-gray-900 hover:text-gray-700 inline-flex items-center px-1 pt-1 border-b-2 border-transparent hover:border-gray-300 text-sm font-medium"
+                >
+                  Dashboard
+                </a>
+                <a
+                  href="/blocks.html"
+                  class="text-gray-900 hover:text-gray-700 inline-flex items-center px-1 pt-1 border-b-2 border-transparent hover:border-gray-300 text-sm font-medium"
+                >
+                  Blocks
+                </a>
+                <a
+                  href="/transactions.html"
+                  class="text-gray-900 hover:text-gray-700 inline-flex items-center px-1 pt-1 border-b-2 border-transparent hover:border-gray-300 text-sm font-medium"
+                >
+                  Transactions
+                </a>
+                <a
+                  href="/accounts.html"
+                  class="text-gray-900 hover:text-gray-700 inline-flex items-center px-1 pt-1 border-b-2 border-transparent hover:border-gray-300 text-sm font-medium"
+                >
+                  Accounts
+                </a>
+              </div>
+            </div>
+            <div class="flex items-center">
+              <div class="flex-shrink-0">
+                <div class="relative">
+                  <input
+                    type="text"
+                    placeholder="Search blocks, transactions, accounts..."
+                    class="block w-full pl-10 pr-3 py-2 border border-gray-300 rounded-md leading-5 bg-white placeholder-gray-500 focus:outline-none focus:placeholder-gray-400 focus:ring-1 focus:ring-blue-500 focus:border-blue-500 sm:text-sm"
+                    id="search-input"
+                    onkeypress="handleSearchKeyPress(event)"
+                  />
+                  <div
+                    class="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none"
+                  >
+                    <svg
+                      class="h-5 w-5 text-gray-400"
+                      fill="none"
+                      stroke="currentColor"
+                      viewBox="0 0 24 24"
+                    >
+                      <path
+                        stroke-linecap="round"
+                        stroke-linejoin="round"
+                        stroke-width="2"
+                        d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z"
+                      ></path>
+                    </svg>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </nav>
+
+      <!-- Main Content -->
+      <div class="max-w-7xl mx-auto py-6 sm:px-6 lg:px-8">
+        <div class="px-4 py-6 sm:px-0">
+          <div class="border-4 border-dashed border-gray-200 rounded-lg p-8">
+            <!-- Search Header -->
+            <div class="text-center mb-8">
+              <h1 class="text-3xl font-bold text-gray-900 mb-4">
+                Search Results
+              </h1>
+              <p class="text-gray-600" id="search-query-display">
+                Enter a search term to find blocks, transactions, or accounts
+              </p>
+            </div>
+
+            <!-- Search Form -->
+            <div class="max-w-md mx-auto mb-8">
+              <div class="relative">
+                <input
+                  type="text"
+                  placeholder="Block number, transaction hash, or address..."
+                  class="block w-full pl-10 pr-3 py-3 text-lg border border-gray-300 rounded-md leading-5 bg-white placeholder-gray-500 focus:outline-none focus:placeholder-gray-400 focus:ring-1 focus:ring-blue-500 focus:border-blue-500"
+                  id="main-search-input"
+                  onkeypress="handleMainSearchKeyPress(event)"
+                />
+                <div
+                  class="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none"
+                >
+                  <svg
+                    class="h-6 w-6 text-gray-400"
+                    fill="none"
+                    stroke="currentColor"
+                    viewBox="0 0 24 24"
+                  >
+                    <path
+                      stroke-linecap="round"
+                      stroke-linejoin="round"
+                      stroke-width="2"
+                      d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z"
+                    ></path>
+                  </svg>
+                </div>
+              </div>
+            </div>
+
+            <!-- Loading State -->
+            <div id="loading-state" class="hidden text-center">
+              <div
+                class="inline-flex items-center px-4 py-2 font-semibold leading-6 text-sm shadow rounded-md text-white bg-blue-500 hover:bg-blue-400 transition ease-in-out duration-150 cursor-not-allowed"
+              >
+                <svg
+                  class="animate-spin -ml-1 mr-3 h-5 w-5 text-white"
+                  xmlns="http://www.w3.org/2000/svg"
+                  fill="none"
+                  viewBox="0 0 24 24"
+                >
+                  <circle
+                    class="opacity-25"
+                    cx="12"
+                    cy="12"
+                    r="10"
+                    stroke="currentColor"
+                    stroke-width="4"
+                  ></circle>
+                  <path
+                    class="opacity-75"
+                    fill="currentColor"
+                    d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"
+                  ></path>
+                </svg>
+                Searching...
+              </div>
+            </div>
+
+            <!-- Search Results -->
+            <div id="search-results" class="hidden">
+              <!-- Results will be populated here -->
+            </div>
+
+            <!-- Error State -->
+            <div id="error-state" class="hidden text-center">
+              <div class="bg-red-50 border border-red-200 rounded-md p-4">
+                <div class="flex">
+                  <div class="flex-shrink-0">
+                    <svg
+                      class="h-5 w-5 text-red-400"
+                      viewBox="0 0 20 20"
+                      fill="currentColor"
+                    >
+                      <path
+                        fill-rule="evenodd"
+                        d="M10 18a8 8 0 100-16 8 8 0 000 16zM8.707 7.293a1 1 0 00-1.414 1.414L8.586 10l-1.293 1.293a1 1 0 101.414 1.414L10 11.414l1.293 1.293a1 1 0 001.414-1.414L11.414 10l1.293-1.293a1 1 0 00-1.414-1.414L10 8.586 8.707 7.293z"
+                        clip-rule="evenodd"
+                      />
+                    </svg>
+                  </div>
+                  <div class="ml-3">
+                    <h3 class="text-sm font-medium text-red-800">
+                      Search Error
+                    </h3>
+                    <div class="mt-2 text-sm text-red-700">
+                      <p id="error-message">
+                        Unable to perform search. Please try again.
+                      </p>
+                    </div>
+                    <div class="mt-4">
+                      <button
+                        type="button"
+                        onclick="retrySearch()"
+                        class="bg-red-100 px-2 py-1.5 rounded-md text-sm font-medium text-red-800 hover:bg-red-200 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-red-500"
+                      >
+                        Try Again
+                      </button>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            <!-- No Results State -->
+            <div id="no-results-state" class="hidden text-center">
+              <div class="bg-yellow-50 border border-yellow-200 rounded-md p-4">
+                <div class="flex justify-center">
+                  <div class="flex-shrink-0">
+                    <svg
+                      class="h-5 w-5 text-yellow-400"
+                      viewBox="0 0 20 20"
+                      fill="currentColor"
+                    >
+                      <path
+                        fill-rule="evenodd"
+                        d="M8.257 3.099c.765-1.36 2.722-1.36 3.486 0l5.58 9.92c.75 1.334-.213 2.98-1.742 2.98H4.42c-1.53 0-2.493-1.646-1.743-2.98l5.58-9.92zM11 13a1 1 0 11-2 0 1 1 0 012 0zm-1-8a1 1 0 00-1 1v3a1 1 0 002 0V6a1 1 0 00-1-1z"
+                        clip-rule="evenodd"
+                      />
+                    </svg>
+                  </div>
+                  <div class="ml-3">
+                    <h3 class="text-sm font-medium text-yellow-800">
+                      No Results Found
+                    </h3>
+                    <div class="mt-2 text-sm text-yellow-700">
+                      <p>
+                        We couldn't find anything matching your search. Please
+                        check:
+                      </p>
+                      <ul class="list-disc list-inside mt-2">
+                        <li>Block numbers should be numeric (e.g., 123456)</li>
+                        <li>
+                          Transaction hashes should start with 0x and be 66
+                          characters
+                        </li>
+                        <li>
+                          Addresses should start with 0x and be 42 characters
+                        </li>
+                      </ul>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            <!-- Search Tips -->
+            <div class="mt-12 bg-blue-50 border border-blue-200 rounded-md p-4">
+              <h3 class="text-sm font-medium text-blue-800 mb-2">
+                Search Tips:
+              </h3>
+              <ul class="text-sm text-blue-700 space-y-1">
+                <li>
+                  <strong>Block Number:</strong> Enter a numeric value (e.g.,
+                  123456)
+                </li>
+                <li>
+                  <strong>Transaction Hash:</strong> Enter a full hash starting
+                  with 0x (66 characters)
+                </li>
+                <li>
+                  <strong>Address:</strong> Enter a full address starting with
+                  0x (42 characters)
+                </li>
+                <li>
+                  <strong>Partial searches:</strong> Use the specific search
+                  boxes on each page for better results
+                </li>
+              </ul>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <script src="/js/search.js"></script>
+  </body>
+</html>

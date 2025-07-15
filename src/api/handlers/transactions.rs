@@ -28,11 +28,50 @@ pub async fn get_transactions(
 
     Json(json!({
         "transactions": txs,
-        "total": total,
-        "page": current_page,
-        "per_page": per_page,
-        "pages": total_pages,
-        "has_next": has_next
+        "pagination": {
+            "current_page": current_page,
+            "per_page": per_page,
+            "total": total,
+            "total_pages": total_pages,
+            "has_next": has_next
+        }
+    }))
+}
+
+/// Get transactions with filtering
+pub async fn get_filtered_transactions(
+    Query(filters): Query<crate::database::TransactionFilterParams>,
+    Extension(app): Extension<Arc<App>>,
+) -> Json<serde_json::Value> {
+    let db = &app.db;
+
+    let txs = db
+        .get_filtered_transactions(&filters)
+        .await
+        .unwrap_or_default();
+
+    let total = db.get_transaction_count().await.unwrap_or(0);
+    let current_page = filters.page.unwrap_or(1);
+    let per_page = filters.per_page.unwrap_or(10);
+    let total_pages = (total as f64 / per_page as f64).ceil() as u64;
+    let has_next = current_page < total_pages;
+
+    Json(json!({
+        "transactions": txs,
+        "pagination": {
+            "current_page": current_page,
+            "per_page": per_page,
+            "total": total,
+            "total_pages": total_pages,
+            "has_next": has_next
+        },
+        "filters": {
+            "status": filters.status,
+            "min_value": filters.min_value,
+            "max_value": filters.max_value,
+            "from_block": filters.from_block,
+            "to_block": filters.to_block
+        }
     }))
 }
 

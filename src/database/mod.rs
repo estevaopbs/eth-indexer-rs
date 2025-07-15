@@ -769,6 +769,16 @@ impl DatabaseService {
         Ok(result.0.unwrap_or(0))
     }
 
+    /// Get total number of accounts
+    pub async fn get_account_count(&self) -> Result<i64> {
+        let result: (i64,) = sqlx::query_as("SELECT COUNT(*) FROM accounts")
+            .fetch_one(&self.pool)
+            .await
+            .context("Failed to query account count")?;
+
+        Ok(result.0)
+    }
+
     /// Get withdrawals for a block
     pub async fn get_withdrawals_by_block(&self, block_number: i64) -> Result<Vec<Withdrawal>> {
         let withdrawals = sqlx::query_as::<_, Withdrawal>(
@@ -866,5 +876,247 @@ impl DatabaseService {
         .context("Failed to get cached historical count")?;
 
         Ok(result.and_then(|(count,)| count))
+    }
+
+    /// Get transactions with filtering
+    pub async fn get_filtered_transactions(
+        &self,
+        filters: &crate::database::TransactionFilterParams,
+    ) -> Result<Vec<Transaction>> {
+        // Build the base query
+        let mut where_clauses = Vec::new();
+
+        // Add status filter
+        if let Some(status) = &filters.status {
+            match status.as_str() {
+                "success" => where_clauses.push("status = 1"),
+                "failed" => where_clauses.push("status = 0"),
+                _ => {} // "all" or unknown - no filter
+            }
+        }
+
+        // Add block range filters
+        if filters.from_block.is_some() {
+            where_clauses.push("block_number >= ?");
+        }
+
+        if filters.to_block.is_some() {
+            where_clauses.push("block_number <= ?");
+        }
+
+        let where_clause = if where_clauses.is_empty() {
+            String::new()
+        } else {
+            format!("WHERE {}", where_clauses.join(" AND "))
+        };
+
+        let query = format!(
+            r#"
+            SELECT hash, block_number, from_address, to_address, value, gas_used, gas_price, status, transaction_index
+            FROM transactions
+            {}
+            ORDER BY block_number DESC, transaction_index DESC
+            LIMIT ? OFFSET ?
+            "#,
+            where_clause
+        );
+
+        let limit = filters.limit();
+        let offset = filters.offset();
+
+        // Build and execute query based on filters
+        let result =
+            if let (Some(from_block), Some(to_block)) = (filters.from_block, filters.to_block) {
+                sqlx::query_as::<_, Transaction>(&query)
+                    .bind(from_block)
+                    .bind(to_block)
+                    .bind(limit)
+                    .bind(offset)
+                    .fetch_all(&self.pool)
+                    .await
+            } else if let Some(from_block) = filters.from_block {
+                sqlx::query_as::<_, Transaction>(&query)
+                    .bind(from_block)
+                    .bind(limit)
+                    .bind(offset)
+                    .fetch_all(&self.pool)
+                    .await
+            } else if let Some(to_block) = filters.to_block {
+                sqlx::query_as::<_, Transaction>(&query)
+                    .bind(to_block)
+                    .bind(limit)
+                    .bind(offset)
+                    .fetch_all(&self.pool)
+                    .await
+            } else {
+                sqlx::query_as::<_, Transaction>(&query)
+                    .bind(limit)
+                    .bind(offset)
+                    .fetch_all(&self.pool)
+                    .await
+            };
+
+        result.context("Failed to query filtered transactions")
+    }
+
+    /// Get accounts with filtering
+    pub async fn get_filtered_accounts(
+        &self,
+        filters: &crate::database::AccountFilterParams,
+    ) -> Result<Vec<Account>> {
+        // Build the base query with filtering
+        let mut where_clauses = Vec::new();
+
+        // Add account type filter
+        if let Some(account_type) = &filters.account_type {
+            match account_type.as_str() {
+                "eoa" | "contract" | "unknown" => {
+                    where_clauses.push("account_type = ?");
+                }
+                _ => {} // "all" or unknown - no filter
+            }
+        }
+
+        // Add transaction count range filters
+        if filters.min_tx_count.is_some() {
+            where_clauses.push("transaction_count >= ?");
+        }
+
+        if filters.max_tx_count.is_some() {
+            where_clauses.push("transaction_count <= ?");
+        }
+
+        let where_clause = if where_clauses.is_empty() {
+            String::new()
+        } else {
+            format!("WHERE {}", where_clauses.join(" AND "))
+        };
+
+        // Add sorting
+        let sort_field = filters.sort.as_deref().unwrap_or("last_activity");
+        let order = filters.order.as_deref().unwrap_or("desc");
+
+        let order_clause = match sort_field {
+            "balance" => format!(
+                "ORDER BY CAST(balance AS INTEGER) {}",
+                if order == "asc" { "ASC" } else { "DESC" }
+            ),
+            "tx_count" => format!(
+                "ORDER BY transaction_count {}",
+                if order == "asc" { "ASC" } else { "DESC" }
+            ),
+            "first_seen" => format!(
+                "ORDER BY first_seen {}",
+                if order == "asc" { "ASC" } else { "DESC" }
+            ),
+            "last_activity" => format!(
+                "ORDER BY last_activity {}",
+                if order == "asc" { "ASC" } else { "DESC" }
+            ),
+            _ => format!(
+                "ORDER BY last_activity {}",
+                if order == "asc" { "ASC" } else { "DESC" }
+            ),
+        };
+
+        let query = format!(
+            r#"
+            SELECT address, balance, transaction_count, account_type, first_seen, last_activity
+            FROM accounts
+            {}
+            {}
+            LIMIT ? OFFSET ?
+            "#,
+            where_clause, order_clause
+        );
+
+        let limit = filters.limit();
+        let offset = filters.offset();
+
+        // Execute query based on filters
+        let result = match (
+            &filters.account_type,
+            filters.min_tx_count,
+            filters.max_tx_count,
+        ) {
+            (Some(account_type), Some(min_tx), Some(max_tx))
+                if matches!(account_type.as_str(), "eoa" | "contract" | "unknown") =>
+            {
+                sqlx::query_as::<_, Account>(&query)
+                    .bind(account_type)
+                    .bind(min_tx)
+                    .bind(max_tx)
+                    .bind(limit)
+                    .bind(offset)
+                    .fetch_all(&self.pool)
+                    .await
+            }
+            (Some(account_type), Some(min_tx), None)
+                if matches!(account_type.as_str(), "eoa" | "contract" | "unknown") =>
+            {
+                sqlx::query_as::<_, Account>(&query)
+                    .bind(account_type)
+                    .bind(min_tx)
+                    .bind(limit)
+                    .bind(offset)
+                    .fetch_all(&self.pool)
+                    .await
+            }
+            (Some(account_type), None, Some(max_tx))
+                if matches!(account_type.as_str(), "eoa" | "contract" | "unknown") =>
+            {
+                sqlx::query_as::<_, Account>(&query)
+                    .bind(account_type)
+                    .bind(max_tx)
+                    .bind(limit)
+                    .bind(offset)
+                    .fetch_all(&self.pool)
+                    .await
+            }
+            (Some(account_type), None, None)
+                if matches!(account_type.as_str(), "eoa" | "contract" | "unknown") =>
+            {
+                sqlx::query_as::<_, Account>(&query)
+                    .bind(account_type)
+                    .bind(limit)
+                    .bind(offset)
+                    .fetch_all(&self.pool)
+                    .await
+            }
+            (None, Some(min_tx), Some(max_tx)) => {
+                sqlx::query_as::<_, Account>(&query)
+                    .bind(min_tx)
+                    .bind(max_tx)
+                    .bind(limit)
+                    .bind(offset)
+                    .fetch_all(&self.pool)
+                    .await
+            }
+            (None, Some(min_tx), None) => {
+                sqlx::query_as::<_, Account>(&query)
+                    .bind(min_tx)
+                    .bind(limit)
+                    .bind(offset)
+                    .fetch_all(&self.pool)
+                    .await
+            }
+            (None, None, Some(max_tx)) => {
+                sqlx::query_as::<_, Account>(&query)
+                    .bind(max_tx)
+                    .bind(limit)
+                    .bind(offset)
+                    .fetch_all(&self.pool)
+                    .await
+            }
+            _ => {
+                sqlx::query_as::<_, Account>(&query)
+                    .bind(limit)
+                    .bind(offset)
+                    .fetch_all(&self.pool)
+                    .await
+            }
+        };
+
+        result.context("Failed to query filtered accounts")
     }
 }

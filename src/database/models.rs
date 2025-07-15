@@ -274,6 +274,52 @@ impl PaginationParams {
     }
 }
 
+/// Transaction filter parameters
+#[derive(Debug, Deserialize)]
+pub struct TransactionFilterParams {
+    pub page: Option<u64>,
+    pub per_page: Option<u64>,
+    pub status: Option<String>,    // "success", "failed", or "all"
+    pub min_value: Option<String>, // minimum value in Wei
+    pub max_value: Option<String>, // maximum value in Wei
+    pub from_block: Option<i64>,   // minimum block number
+    pub to_block: Option<i64>,     // maximum block number
+}
+
+impl TransactionFilterParams {
+    pub fn limit(&self) -> i64 {
+        self.per_page.unwrap_or(10).min(100) as i64
+    }
+
+    pub fn offset(&self) -> i64 {
+        (self.page.unwrap_or(1).saturating_sub(1) * self.per_page.unwrap_or(10)) as i64
+    }
+}
+
+/// Account filter parameters
+#[derive(Debug, Deserialize)]
+pub struct AccountFilterParams {
+    pub page: Option<u64>,
+    pub per_page: Option<u64>,
+    pub account_type: Option<String>, // "eoa", "contract", "unknown", or "all"
+    pub min_balance: Option<String>,  // minimum balance in Wei
+    pub max_balance: Option<String>,  // maximum balance in Wei
+    pub min_tx_count: Option<i64>,    // minimum transaction count
+    pub max_tx_count: Option<i64>,    // maximum transaction count
+    pub sort: Option<String>,         // "balance", "tx_count", "first_seen", "last_activity"
+    pub order: Option<String>,        // "asc" or "desc"
+}
+
+impl AccountFilterParams {
+    pub fn limit(&self) -> i64 {
+        self.per_page.unwrap_or(10).min(100) as i64
+    }
+
+    pub fn offset(&self) -> i64 {
+        (self.page.unwrap_or(1).saturating_sub(1) * self.per_page.unwrap_or(10)) as i64
+    }
+}
+
 /// Block response structure for API with calculated fields
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct BlockResponse {

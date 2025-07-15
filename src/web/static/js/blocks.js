@@ -135,12 +135,19 @@ function handleSearchKeyPress(event) {
   if (event.key === "Enter") {
     const query = event.target.value.trim();
     if (query) {
-      // Try to parse as block number
+      // Check if it's a block number
       const blockNumber = parseInt(query);
-      if (!isNaN(blockNumber)) {
+      if (!isNaN(blockNumber) && blockNumber >= 0 && blockNumber.toString() === query) {
         viewBlock(blockNumber);
+      } else if (query.startsWith("0x") && query.length === 66) {
+        // Transaction hash - redirect to transaction detail
+        window.location.href = `/transaction-detail.html?hash=${query}`;
+      } else if (query.startsWith("0x") && query.length === 42) {
+        // Address - redirect to account detail
+        window.location.href = `/account-detail.html?address=${query}`;
       } else {
-        alert("Please enter a valid block number");
+        // Use global search for other queries
+        window.location.href = `/search.html?q=${encodeURIComponent(query)}`;
       }
     }
   }

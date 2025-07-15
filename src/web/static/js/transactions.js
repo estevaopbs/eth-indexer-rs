@@ -184,18 +184,19 @@ function handleSearchKeyPress(event) {
     const query = event.target.value.trim();
     if (query) {
       // Check if it's a transaction hash (starts with 0x and is 66 chars)
-      if (query.startsWith("0x") && query.length === 66) {
+      if (query.startsWith("0x") && query.length === 66 && /^0x[a-fA-F0-9]{64}$/.test(query)) {
         viewTransaction(query);
-      } else if (query.startsWith("0x") && query.length === 42) {
+      } else if (query.startsWith("0x") && query.length === 42 && /^0x[a-fA-F0-9]{40}$/.test(query)) {
         // It's an address
         viewAddress(query);
       } else {
         // Try as block number
         const blockNumber = parseInt(query);
-        if (!isNaN(blockNumber)) {
+        if (!isNaN(blockNumber) && blockNumber >= 0 && blockNumber.toString() === query) {
           viewBlock(blockNumber);
         } else {
-          alert("Please enter a valid transaction hash, address, or block number");
+          // Use global search for other queries
+          window.location.href = `/search.html?q=${encodeURIComponent(query)}`;
         }
       }
     }
@@ -206,8 +207,49 @@ function handleSearchKeyPress(event) {
 function applyFilters() {
   const statusFilter = document.getElementById("status-filter").value;
   
-  // TODO: Implement filtering with API
-  alert("Filtering functionality coming soon!");
+  // Build filter parameters
+  const filterParams = new URLSearchParams({
+    page: '1', // Reset to first page when filtering
+    per_page: perPage.toString()
+  });
+  
+  if (statusFilter && statusFilter !== 'all') {
+    filterParams.append('status', statusFilter);
+  }
+  
+  // Load filtered transactions
+  loadFilteredTransactions(filterParams);
+}
+
+// Load transactions with filters
+async function loadFilteredTransactions(filterParams) {
+  if (isLoading) return;
+  isLoading = true;
+  
+  showLoading();
+  hideError();
+  
+  try {
+    const response = await fetch(`${API_BASE}/transactions/filtered?${filterParams.toString()}`);
+    
+    if (!response.ok) {
+      throw new Error(`API returned ${response.status}`);
+    }
+    
+    const data = await response.json();
+    displayTransactions(data.transactions || []);
+    updatePagination(parseInt(filterParams.get('page') || '1'), data.pagination?.has_next || false);
+    
+    // Update current page to reflect filters
+    currentPage = parseInt(filterParams.get('page') || '1');
+    
+  } catch (error) {
+    console.error("Error loading filtered transactions:", error);
+    showError();
+  } finally {
+    isLoading = false;
+    hideLoading();
+  }
 }
 
 // Initialize page

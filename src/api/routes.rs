@@ -27,6 +27,7 @@ pub async fn create_router(app: Arc<App>) -> Router {
         .route("/blocks/since", get(get_blocks_since))
         .route("/blocks/:number", get(get_block_by_number))
         .route("/transactions", get(get_transactions))
+        .route("/transactions/filtered", get(get_filtered_transactions))
         .route("/transactions/live", get(get_live_transactions))
         .route("/transactions/since", get(get_transactions_since))
         .route("/transactions/:hash", get(get_transaction_by_hash))
@@ -35,6 +36,7 @@ pub async fn create_router(app: Arc<App>) -> Router {
             get(get_transaction_token_transfers),
         )
         .route("/accounts", get(get_accounts))
+        .route("/accounts/filtered", get(get_filtered_accounts))
         .route("/accounts/:address", get(get_account))
         .route("/tokens", get(get_tokens))
         .route("/tokens/balances", get(get_token_balances))

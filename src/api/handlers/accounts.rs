@@ -160,6 +160,42 @@ pub async fn get_accounts(
     }
 }
 
+/// Get accounts with filtering
+pub async fn get_filtered_accounts(
+    Query(filters): Query<crate::database::AccountFilterParams>,
+    Extension(app): Extension<Arc<App>>,
+) -> Json<serde_json::Value> {
+    let db = &app.db;
+
+    let accounts = db.get_filtered_accounts(&filters).await.unwrap_or_default();
+
+    let total = db.get_account_count().await.unwrap_or(0);
+    let current_page = filters.page.unwrap_or(1);
+    let per_page = filters.per_page.unwrap_or(10);
+    let total_pages = (total as f64 / per_page as f64).ceil() as u64;
+    let has_next = current_page < total_pages;
+
+    Json(json!({
+        "accounts": accounts,
+        "pagination": {
+            "current_page": current_page,
+            "per_page": per_page,
+            "total": total,
+            "total_pages": total_pages,
+            "has_next": has_next
+        },
+        "filters": {
+            "account_type": filters.account_type,
+            "min_balance": filters.min_balance,
+            "max_balance": filters.max_balance,
+            "min_tx_count": filters.min_tx_count,
+            "max_tx_count": filters.max_tx_count,
+            "sort": filters.sort,
+            "order": filters.order
+        }
+    }))
+}
+
 /// Determine account type based on transaction count and blockchain state
 async fn determine_account_type(account: &Account, app: &App) -> &'static str {
     // If account has made transactions, it's likely an EOA (Externally Owned Account)
