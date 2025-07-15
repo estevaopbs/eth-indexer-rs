@@ -1,7 +1,7 @@
 [package]
 name = "eth-indexer-rs"
 version = "0.1.0"
-edition = "2023"
+edition = "2024"
 description = "A blockchain indexer for Ethereum-like chains"
 authors = ["estevaopbs"]
 
