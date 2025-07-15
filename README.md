@@ -1,142 +1,61 @@
 # ETH Indexer RS
 
-Um indexador de blockchain Ethereum desenvolvido em Rust, com interface web para explorar os dados indexados.
+ETH Indexer RS is a blockchain indexer for Ethereum networks, developed in Rust. It collects, stores, and serves data on blocks, transactions, accounts, and events from Ethereum, offering an API and a web interface for real-time querying and visualization.
 
-## Recursos
+## Features
 
-- ✅ Conexão com nós Ethereum via JSON-RPC
-- ✅ Indexação de blocos, transações e logs
-- ✅ Banco de dados SQLite local
-- ✅ Interface web para exploração dos dados
-- ✅ Rastreamento de contas e saldos
-- ✅ Detecção de transferências de tokens ERC-20
-- ✅ APIs REST para acesso aos dados
+- Real-time indexing of Ethereum blocks, transactions, accounts, and logs.
+- RESTful API for querying indexed data.
+- Modern web interface with dashboards, search, and detailed views for blocks, transactions, and accounts.
+- Support for historical data and network statistics.
+- Visualization of gas usage and transactions per block charts.
+- Pagination and filters for large data volumes.
+- Support for ERC-20 tokens and token transfers.
 
-## Requisitos
+## How to Run
 
-- [Rust](https://www.rust-lang.org/tools/install) 1.54 ou superior
-- Um endpoint Ethereum RPC (Infura, Alchemy, ou um nó local)
+1. **Prerequisites**  
+    - [Rust](https://www.rust-lang.org/tools/install)
+    - [Node.js](https://nodejs.org/) (optional, for frontend development)
+    - SQLite3
 
-## Instalação Rápida
+2. **Configuration**  
+    - Adjust `.env` as needed.
+    - Install dependencies:
+      ```sh
+      cargo build
+      ```
 
-```bash
-# Clonar o repositório
-git clone https://github.com/seu-usuario/eth-indexer-rs.git
-cd eth-indexer-rs
+3. **Execution**  
+    - Start the indexer:
+      ```sh
+      cargo run
+      ```
+    - Access the web interface at `http://localhost:3000`
 
-# Configurar o projeto
-./scripts/setup.sh
+4. **Testing**
+    ```sh
+    cargo test
+    ```
 
-# Editar o arquivo .env com seu endpoint Ethereum RPC
-# Exemplo:
-# ETH_RPC_URL=https://mainnet.infura.io/v3/sua-chave-infura
+## Main API Endpoints
 
-# Iniciar o indexador
-./scripts/start.sh
-```
+- GET /api/blocks — List indexed blocks
+- GET /api/blocks/{number} — Block details
+- GET /api/transactions — List transactions
+- GET /api/transactions/{hash} — Transaction details
+- GET /api/accounts — List accounts
+- GET /api/accounts/{address} — Account details
+- GET /api/stats — Indexer statistics
 
-Após iniciar, o aplicativo estará disponível em:
+## Frontend
 
-- Interface Web: http://localhost:3000
-- API: http://localhost:3000/api
+The static frontend is located in the `static` directory and can be served directly by the Rust backend. It includes pages for the dashboard, blocks, transactions, and accounts.
 
-## Configuração
+## Database
 
-O arquivo `.env` contém todas as configurações necessárias:
+The project uses SQLite by default, with SQL migrations in the `migrations` directory.
 
-```
-# Database connection string
-DATABASE_URL=sqlite:./data/indexer.db
+## License
 
-# Ethereum RPC URL (replace with your own endpoint)
-ETH_RPC_URL=https://mainnet.infura.io/v3/your-infura-key
-
-# API server port
-API_PORT=3000
-
-# Starting block number (optional, defaults to 0)
-# START_BLOCK=15000000
-
-# Maximum concurrent RPC requests
-MAX_CONCURRENT_REQUESTS=5
-
-# Number of blocks to process in a batch
-BLOCKS_PER_BATCH=10
-
-# Log level: trace, debug, info, warn, error
-LOG_LEVEL=info
-```
-
-## Estrutura do Banco de Dados
-
-O indexador organiza os dados em várias tabelas:
-
-- `blocks`: Armazena informações de blocos
-- `transactions`: Armazena transações
-- `logs`: Armazena logs de eventos
-- `accounts`: Rastreia contas e saldos
-- `token_transfers`: Rastreia transferências de tokens ERC-20
-
-## API Endpoints
-
-### Blocos
-
-- `GET /api/blocks` - Listar blocos (paginado)
-- `GET /api/blocks/:number` - Obter bloco específico
-
-### Transações
-
-- `GET /api/transactions` - Listar transações (paginado)
-- `GET /api/transactions/:hash` - Obter transação específica
-
-### Contas
-
-- `GET /api/accounts/:address` - Obter informações de conta
-
-### Outros
-
-- `GET /api/health` - Verificação de saúde
-- `GET /api/stats` - Estatísticas gerais
-- `GET /api/search/:query` - Buscar blocos/transações/contas
-
-## Desenvolvimento
-
-Este projeto utiliza SQLx com modo offline para evitar dependências de banco de dados durante a compilação.
-
-### Compilação
-
-```bash
-# Compilação padrão (usa SQLx offline)
-./scripts/dev.sh
-
-# Compilação e execução
-./scripts/dev.sh --run
-
-# Compilação manual
-export SQLX_OFFLINE=true
-cargo build
-```
-
-### Estrutura de Migrações
-
-As migrações estão localizadas em `./src/database/migrations/` e são executadas automaticamente na inicialização:
-
-- `001__initial_schema.sql` - Schema inicial (blocos, transações, logs)
-- `002__add_accounts.sql` - Tabela de contas
-- `003__add_token_transfers.sql` - Tabela de transferências de tokens
-
-### Testes
-
-```bash
-cargo test
-```
-
-### Executando em Modo Debug
-
-```bash
-cargo run
-```
-
-## Licença
-
-Este projeto é licenciado sob a Licença MIT - veja o arquivo [LICENSE](LICENSE) para mais detalhes.
+MIT License. See the [LICENSE](LICENSE) file for more details.

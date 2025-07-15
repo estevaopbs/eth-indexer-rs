@@ -1,9 +1,9 @@
 [package]
 name = "eth-indexer-rs"
 version = "0.1.0"
-edition = "2021"
+edition = "2023"
 description = "A blockchain indexer for Ethereum-like chains"
-authors = ["ETH Indexer RS Team"]
+authors = ["estevaopbs"]
 
 [dependencies]
 # Async runtime
