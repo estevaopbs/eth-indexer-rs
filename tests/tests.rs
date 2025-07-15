@@ -1,13 +1,15 @@
 use eth_indexer_rs::config::AppConfig;
 use eth_indexer_rs::{
-    database::{Block, Transaction},
     App,
+    database::{Block, Transaction},
 };
 use tokio;
 
 #[tokio::test]
 async fn test_app_initialization_with_env() {
-    std::env::set_var("DATABASE_URL", "sqlite:./data/test_indexer.db");
+    unsafe {
+        std::env::set_var("DATABASE_URL", "sqlite:./data/test_indexer.db");
+    }
     let app_config = AppConfig::load().expect("Failed to load configuration from .env");
     let app_result = App::init(app_config).await;
     assert!(
@@ -25,7 +27,9 @@ async fn test_app_initialization_with_env() {
 
 #[tokio::test]
 async fn test_database_operations() {
-    std::env::set_var("DATABASE_URL", "./data/test_db_ops.db");
+    unsafe {
+        std::env::set_var("DATABASE_URL", "./data/test_db_ops.db");
+    }
     let app_config = AppConfig::load().expect("Failed to load configuration from .env");
     let app_result = App::init(app_config).await;
     assert!(
@@ -120,7 +124,9 @@ async fn test_database_operations() {
 
 #[tokio::test]
 async fn test_api_endpoints() {
-    std::env::set_var("DATABASE_URL", "sqlite:./data/test_api.db");
+    unsafe {
+        std::env::set_var("DATABASE_URL", "sqlite:./data/test_api.db");
+    }
     let app_config = AppConfig::load().expect("Failed to load configuration from .env");
     let app_result = App::init(app_config).await;
     assert!(
@@ -135,7 +141,9 @@ async fn test_api_endpoints() {
 
 #[tokio::test]
 async fn test_rpc_connection_and_parsing() {
-    std::env::set_var("DATABASE_URL", "sqlite:./data/test_indexer.db");
+    unsafe {
+        std::env::set_var("DATABASE_URL", "sqlite:./data/test_indexer.db");
+    }
     let app_config = AppConfig::load().expect("Failed to load configuration from .env");
     let app_result = App::init(app_config).await;
     assert!(
@@ -169,7 +177,9 @@ async fn test_rpc_connection_and_parsing() {
 
 #[tokio::test]
 async fn test_beacon_connection_and_parsing() {
-    std::env::set_var("DATABASE_URL", "sqlite:./data/test_indexer.db");
+    unsafe {
+        std::env::set_var("DATABASE_URL", "sqlite:./data/test_indexer.db");
+    }
     let app_config = AppConfig::load().expect("Failed to load configuration from .env");
     let app_result = App::init(app_config).await;
     assert!(
@@ -193,7 +203,9 @@ async fn test_beacon_connection_and_parsing() {
 
 #[tokio::test]
 async fn test_full_integration_with_real_data() {
-    std::env::set_var("DATABASE_URL", "sqlite:./data/test_integration.db");
+    unsafe {
+        std::env::set_var("DATABASE_URL", "sqlite:./data/test_integration.db");
+    }
     let app_config = AppConfig::load().expect("Failed to load configuration from .env");
     let app_result = App::init(app_config).await;
     assert!(
