@@ -9,16 +9,14 @@ ETH Indexer RS is a blockchain indexer for Ethereum networks, developed in Rust.
 - Modern web interface with dashboards, search, and detailed views for blocks, transactions, and accounts.
 - Support for historical data and network statistics.
 - Visualization of gas usage and transactions per block charts.
-- Pagination and filters for large data volumes.
+- Pagination and detailed views for blocks, transactions, and accounts.
 - Support for ERC-20 tokens and token transfers.
 
 ## How to Run
 
 1. **Prerequisites**  
-    - [Rust](https://www.rust-lang.org/tools/install)
-    - [Node.js](https://nodejs.org/) (optional, for frontend development)
-    - SQLite3
-
+    - Rust 1.88.0
+  
 2. **Configuration**  
     - Adjust `.env` as needed.
     - Install dependencies:
@@ -35,7 +33,8 @@ ETH Indexer RS is a blockchain indexer for Ethereum networks, developed in Rust.
 
 4. **Testing**
     ```sh
-    cargo test
+    chmod +x ./test.sh
+    ./test.sh
     ```
 
 ## Main API Endpoints
