@@ -27,7 +27,7 @@ hex = "0.4"
 gcp_auth = "0.8"
 
 # Database
-sqlx = { version = "0.7.2", features = [
+sqlx = { version = "0.8.6", features = [
     "runtime-tokio-rustls",
     "sqlite",
     "migrate",
