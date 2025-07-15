@@ -13,17 +13,11 @@ use tracing::info;
 
 use super::handlers::*;
 
-/// Create the API router
 pub async fn create_router(app: Arc<App>) -> Router {
-    info!("Setting up API routes");
-
-    // CORS configuration
     let cors = CorsLayer::new()
         .allow_methods(Any)
         .allow_headers(Any)
         .allow_origin(Any);
-
-    // API routes
     let api_routes = Router::new()
         .route("/health", get(health_check))
         .route("/stats", get(get_stats))
@@ -36,7 +30,10 @@ pub async fn create_router(app: Arc<App>) -> Router {
         .route("/transactions/live", get(get_live_transactions))
         .route("/transactions/since", get(get_transactions_since))
         .route("/transactions/:hash", get(get_transaction_by_hash))
-        .route("/transactions/:hash/token-transfers", get(get_transaction_token_transfers))
+        .route(
+            "/transactions/:hash/token-transfers",
+            get(get_transaction_token_transfers),
+        )
         .route("/accounts", get(get_accounts))
         .route("/accounts/:address", get(get_account))
         .route("/tokens", get(get_tokens))
@@ -47,10 +44,8 @@ pub async fn create_router(app: Arc<App>) -> Router {
         .layer(cors.clone())
         .layer(TraceLayer::new_for_http());
 
-    // Static file serving for frontend
     let static_files = Router::new().nest_service("/", ServeDir::new("src/web/static"));
 
-    // Combine routes
     Router::new()
         .nest("/api", api_routes)
         .merge(static_files)
@@ -58,7 +53,6 @@ pub async fn create_router(app: Arc<App>) -> Router {
         .layer(TraceLayer::new_for_http())
 }
 
-/// Start the API server
 pub async fn start_server(app: Arc<App>) -> anyhow::Result<()> {
     let addr = format!("0.0.0.0:{}", app.config.api_port);
     let router = create_router(app).await;

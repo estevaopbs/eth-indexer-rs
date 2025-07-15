@@ -1,51 +1,38 @@
 -- Migration 001: Core Blockchain Data
--- Creates the fundamental tables for blocks, transactions, and logs
--- This represents the core Ethereum execution layer data
 
--- ============================================================================
--- BLOCKS TABLE - Core execution layer block data
--- ============================================================================
+-- BLOCKS TABLE
 CREATE TABLE IF NOT EXISTS blocks (
-    -- Core block identifiers and metadata
-    number INTEGER PRIMARY KEY,                    -- Block Height/Number ✅ STORED
-    hash TEXT NOT NULL UNIQUE,                     -- Hash ✅ STORED
-    parent_hash TEXT NOT NULL,                     -- Parent Hash ✅ STORED
-    timestamp INTEGER NOT NULL,                    -- Timestamp ✅ STORED
-    
-    -- Gas and transaction data
-    gas_used INTEGER NOT NULL,                     -- Gas Used ✅ STORED
-    gas_limit INTEGER NOT NULL,                    -- Gas Limit ✅ STORED
-    transaction_count INTEGER NOT NULL,            -- Transactions (count) ✅ STORED
-    
-    -- Block producer and fees (EIP-1559)
-    miner TEXT,                                    -- Fee Recipient ✅ STORED
-    base_fee_per_gas TEXT,                         -- Base Fee Per Gas ✅ STORED
-    
-    -- Block structure and state
-    total_difficulty TEXT,                         -- Total Difficulty ✅ STORED
-    size_bytes INTEGER,                            -- Size (bytes) ✅ STORED
-    extra_data TEXT,                               -- Extra Data ✅ STORED
-    state_root TEXT,                               -- StateRoot ✅ STORED
-    nonce TEXT,                                    -- Nonce ✅ STORED
-    
-    -- Post-Shanghai (Withdrawals) fields
-    withdrawals_root TEXT,                         -- WithdrawalsRoot ✅ STORED
-    withdrawal_count INTEGER DEFAULT 0,           -- Withdrawals (count) ✅ STORED
+    number INTEGER PRIMARY KEY,
+    hash TEXT NOT NULL UNIQUE,
+    parent_hash TEXT NOT NULL,
+    timestamp INTEGER NOT NULL,
+    gas_used INTEGER NOT NULL,
+    gas_limit INTEGER NOT NULL,
+    transaction_count INTEGER NOT NULL,
+    miner TEXT,
+    base_fee_per_gas TEXT,
+    total_difficulty TEXT,
+    size_bytes INTEGER,
+    extra_data TEXT,
+    state_root TEXT,
+    nonce TEXT,
+    withdrawals_root TEXT,
+    withdrawal_count INTEGER DEFAULT 0,           
     
     -- EIP-4844 (Dencun/Blob) fields
-    blob_gas_used INTEGER,                         -- Blob Gas Used ✅ STORED
-    excess_blob_gas INTEGER,                       -- Excess blob gas ✅ STORED
+    blob_gas_used INTEGER,                         
+    excess_blob_gas INTEGER,                       
     
     -- Beacon Chain fields (requires separate API connection)
-    slot INTEGER,                                  -- Beacon chain slot ✅ STORED
-    proposer_index INTEGER,                        -- Validator proposer index ✅ STORED
-    epoch INTEGER,                                 -- Beacon chain epoch ✅ STORED
-    slot_root TEXT,                                -- Slot root hash ✅ STORED
-    parent_root TEXT,                              -- Parent root hash ✅ STORED
-    beacon_deposit_count INTEGER,                  -- Beacon chain deposit count ✅ STORED
-    graffiti TEXT,                                 -- Proposer graffiti ✅ STORED
-    randao_reveal TEXT,                            -- Randao reveal signature ✅ STORED
-    randao_mix TEXT,                               -- Block randomness ✅ STORED
+    slot INTEGER,                                  
+    proposer_index INTEGER,                        
+    epoch INTEGER,                                 
+    slot_root TEXT,                                
+    parent_root TEXT,                              
+    beacon_deposit_count INTEGER,                  
+    graffiti TEXT,                                 
+    randao_reveal TEXT,                            
+    randao_mix TEXT,                               
     
     -- Metadata
     created_at DATETIME DEFAULT CURRENT_TIMESTAMP
@@ -58,9 +45,7 @@ CREATE INDEX IF NOT EXISTS idx_blocks_timestamp ON blocks(timestamp);
 CREATE INDEX IF NOT EXISTS idx_blocks_base_fee ON blocks(base_fee_per_gas);
 CREATE INDEX IF NOT EXISTS idx_blocks_slot ON blocks(slot);
 
--- ============================================================================
 -- TRANSACTIONS TABLE - Individual transaction data
--- ============================================================================
 CREATE TABLE IF NOT EXISTS transactions (
     hash TEXT PRIMARY KEY,                         -- Transaction hash
     block_number INTEGER NOT NULL,                 -- Block number reference
@@ -81,9 +66,7 @@ CREATE INDEX IF NOT EXISTS idx_transactions_from ON transactions(from_address);
 CREATE INDEX IF NOT EXISTS idx_transactions_to ON transactions(to_address);
 CREATE INDEX IF NOT EXISTS idx_transactions_status ON transactions(status);
 
--- ============================================================================
 -- LOGS TABLE - Event logs from smart contracts
--- ============================================================================
 CREATE TABLE IF NOT EXISTS logs (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     transaction_hash TEXT NOT NULL,

@@ -3,8 +3,8 @@ use crate::executor::{EthRpcOperation, RpcExecutor};
 use anyhow::{Context, Result};
 use ethers::{
     core::types::{
-        Block as EthBlock, BlockNumber, Transaction as EthTransaction, TransactionReceipt, H256,
-        U64, H160, Bytes, TransactionRequest,
+        Block as EthBlock, BlockNumber, Bytes, Transaction as EthTransaction, TransactionReceipt,
+        TransactionRequest, H160, H256, U64,
     },
     providers::{Http, Middleware, Provider},
     utils::keccak256,
@@ -25,7 +25,6 @@ pub enum EthRpcResponse {
 /// Client for interacting with Ethereum RPC
 pub struct RpcClient {
     provider: Arc<Provider<Http>>,
-    config: AppConfig,
     executor: RpcExecutor<EthRpcOperation, EthRpcResponse>,
 }
 
@@ -51,7 +50,9 @@ impl RpcClient {
                             Ok(EthRpcResponse::LatestBlockNumber(block_number.as_u64()))
                         }
                         EthRpcOperation::GetBlockByNumber(block_num) => {
-                            let block = provider.get_block_with_txs(BlockNumber::Number(U64::from(block_num))).await?;
+                            let block = provider
+                                .get_block_with_txs(BlockNumber::Number(U64::from(block_num)))
+                                .await?;
                             Ok(EthRpcResponse::Block(block))
                         }
                         EthRpcOperation::GetTransactionReceipt(tx_hash) => {
@@ -70,16 +71,16 @@ impl RpcClient {
             },
         );
 
-        Ok(Self {
-            provider,
-            config,
-            executor,
-        })
+        Ok(Self { provider, executor })
     }
 
     /// Get the latest block number
     pub async fn get_latest_block_number(&self) -> Result<u64> {
-        match self.executor.execute(EthRpcOperation::GetLatestBlockNumber).await? {
+        match self
+            .executor
+            .execute(EthRpcOperation::GetLatestBlockNumber)
+            .await?
+        {
             EthRpcResponse::LatestBlockNumber(block_number) => Ok(block_number),
             _ => Err(anyhow::anyhow!("Unexpected response type")),
         }
@@ -90,7 +91,11 @@ impl RpcClient {
         &self,
         number: u64,
     ) -> Result<Option<EthBlock<EthTransaction>>> {
-        match self.executor.execute(EthRpcOperation::GetBlockByNumber(number)).await? {
+        match self
+            .executor
+            .execute(EthRpcOperation::GetBlockByNumber(number))
+            .await?
+        {
             EthRpcResponse::Block(block) => Ok(block),
             _ => Err(anyhow::anyhow!("Unexpected response type")),
         }
@@ -114,7 +119,11 @@ impl RpcClient {
         &self,
         tx_hash: &str,
     ) -> Result<Option<TransactionReceipt>> {
-        match self.executor.execute(EthRpcOperation::GetTransactionReceipt(tx_hash.to_string())).await? {
+        match self
+            .executor
+            .execute(EthRpcOperation::GetTransactionReceipt(tx_hash.to_string()))
+            .await?
+        {
             EthRpcResponse::TransactionReceipt(receipt) => Ok(receipt),
             _ => Err(anyhow::anyhow!("Unexpected response type")),
         }
@@ -159,16 +168,30 @@ impl RpcClient {
             .parse::<H160>()
             .context(format!("Invalid account address: {}", account_address))?;
 
+        // First, check if the token address is actually a contract
+        let code = self
+            .provider
+            .get_code(token_contract, None)
+            .await
+            .context("Failed to check if token address is a contract")?;
+
+        if code.is_empty() {
+            return Err(anyhow::anyhow!(
+                "Token address {} is not a contract (no bytecode)",
+                token_address
+            ));
+        }
+
         // Encode balanceOf(address) function call
         // Function selector: first 4 bytes of keccak256("balanceOf(address)")
         let function_selector = &keccak256("balanceOf(address)".as_bytes())[0..4];
-        
+
         // Encode the address parameter (32 bytes, left-padded)
         let mut data = Vec::with_capacity(36);
         data.extend_from_slice(function_selector);
         data.extend_from_slice(&[0u8; 12]); // 12 bytes of padding
         data.extend_from_slice(account.as_bytes()); // 20 bytes address
-        
+
         let block_id = match block_number {
             Some(num) => Some(ethers::core::types::BlockId::Number(BlockNumber::Number(
                 U64::from(num),
@@ -186,14 +209,17 @@ impl RpcClient {
                 block_id,
             )
             .await
-            .context(format!(
-                "Failed to call balanceOf for token {} and account {}",
-                token_address, account_address
-            ))?;
+            .map_err(|e| {
+                anyhow::anyhow!(
+                    "Failed to call balanceOf for token {} and account {}: {}. This may indicate the contract does not implement ERC-20 balanceOf method",
+                    token_address, account_address, e
+                )
+            })?;
 
         // Convert bytes result to U256 string
         if result.0.len() >= 32 {
-            let balance = ethers::core::types::U256::from_big_endian(&result.0[result.0.len() - 32..]);
+            let balance =
+                ethers::core::types::U256::from_big_endian(&result.0[result.0.len() - 32..]);
             Ok(balance.to_string())
         } else {
             Ok("0".to_string())
@@ -208,14 +234,18 @@ impl RpcClient {
 
         // Encode name() function call
         let function_selector = &keccak256("name()".as_bytes())[0..4];
-        
-        match self.provider.call(
-            &TransactionRequest::new()
-                .to(token_contract)
-                .data(Bytes::from(function_selector.to_vec()))
-                .into(),
-            None,
-        ).await {
+
+        match self
+            .provider
+            .call(
+                &TransactionRequest::new()
+                    .to(token_contract)
+                    .data(Bytes::from(function_selector.to_vec()))
+                    .into(),
+                None,
+            )
+            .await
+        {
             Ok(result) => {
                 if result.0.len() >= 64 {
                     // Decode string from ABI encoding
@@ -237,14 +267,18 @@ impl RpcClient {
 
         // Encode symbol() function call
         let function_selector = &keccak256("symbol()".as_bytes())[0..4];
-        
-        match self.provider.call(
-            &TransactionRequest::new()
-                .to(token_contract)
-                .data(Bytes::from(function_selector.to_vec()))
-                .into(),
-            None,
-        ).await {
+
+        match self
+            .provider
+            .call(
+                &TransactionRequest::new()
+                    .to(token_contract)
+                    .data(Bytes::from(function_selector.to_vec()))
+                    .into(),
+                None,
+            )
+            .await
+        {
             Ok(result) => {
                 if result.0.len() >= 64 {
                     // Decode string from ABI encoding
@@ -266,17 +300,23 @@ impl RpcClient {
 
         // Encode decimals() function call
         let function_selector = &keccak256("decimals()".as_bytes())[0..4];
-        
-        match self.provider.call(
-            &TransactionRequest::new()
-                .to(token_contract)
-                .data(Bytes::from(function_selector.to_vec()))
-                .into(),
-            None,
-        ).await {
+
+        match self
+            .provider
+            .call(
+                &TransactionRequest::new()
+                    .to(token_contract)
+                    .data(Bytes::from(function_selector.to_vec()))
+                    .into(),
+                None,
+            )
+            .await
+        {
             Ok(result) => {
                 if result.0.len() >= 32 {
-                    let decimals = ethers::core::types::U256::from_big_endian(&result.0[result.0.len() - 32..]);
+                    let decimals = ethers::core::types::U256::from_big_endian(
+                        &result.0[result.0.len() - 32..],
+                    );
                     if decimals <= ethers::core::types::U256::from(255u64) {
                         return Ok(Some(decimals.as_u32() as u8));
                     }
@@ -295,19 +335,22 @@ impl RpcClient {
 
         // Skip first 32 bytes (offset) and get length from next 32 bytes
         let length = ethers::core::types::U256::from_big_endian(&data[32..64]).as_usize();
-        
+
         if data.len() < 64 + length {
             return Err(anyhow::anyhow!("Invalid string data"));
         }
 
         let string_bytes = &data[64..64 + length];
-        String::from_utf8(string_bytes.to_vec())
-            .context("Failed to decode UTF-8 string")
+        String::from_utf8(string_bytes.to_vec()).context("Failed to decode UTF-8 string")
     }
 
     /// Check connection to RPC
     pub async fn check_connection(&self) -> Result<bool> {
-        match self.executor.execute(EthRpcOperation::CheckConnection).await? {
+        match self
+            .executor
+            .execute(EthRpcOperation::CheckConnection)
+            .await?
+        {
             EthRpcResponse::ConnectionCheck(connected) => {
                 if connected {
                     debug!("Successfully connected to Ethereum RPC");

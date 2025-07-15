@@ -1,11 +1,9 @@
 mod models;
 
 use anyhow::{Context, Result};
-use sqlx::{
-    migrate::MigrateDatabase, pool::PoolOptions, sqlite::SqlitePool, Executor, Pool, Sqlite,
-};
+use sqlx::{migrate::MigrateDatabase, pool::PoolOptions, Pool, Sqlite};
 use std::path::Path;
-use tracing::{error, info, warn};
+use tracing::{error, info};
 
 pub use models::*;
 
@@ -274,7 +272,10 @@ impl DatabaseService {
     }
 
     /// Get token transfers by transaction hash
-    pub async fn get_token_transfers_by_transaction_hash(&self, tx_hash: &str) -> Result<Vec<TokenTransfer>> {
+    pub async fn get_token_transfers_by_transaction_hash(
+        &self,
+        tx_hash: &str,
+    ) -> Result<Vec<TokenTransfer>> {
         let transfers = sqlx::query_as::<_, TokenTransfer>(
             r#"
             SELECT id, transaction_hash, token_address, from_address, to_address, amount, 
@@ -282,7 +283,7 @@ impl DatabaseService {
             FROM token_transfers 
             WHERE transaction_hash = ? 
             ORDER BY id
-            "#
+            "#,
         )
         .bind(tx_hash)
         .fetch_all(&self.pool)
@@ -390,7 +391,10 @@ impl DatabaseService {
         });
 
         let result = query_builder.build().execute(&self.pool).await?;
-        info!("Batch insert completed: {} rows inserted/ignored", result.rows_affected());
+        info!(
+            "Batch insert completed: {} rows inserted/ignored",
+            result.rows_affected()
+        );
         Ok(())
     }
 
@@ -463,11 +467,6 @@ impl DatabaseService {
 
     /// Insert or update token balance
     pub async fn upsert_token_balance(&self, balance: &TokenBalance) -> Result<()> {
-        info!(
-            "Upserting token balance: {} {} for {} at block {}",
-            balance.balance, balance.token_address, balance.account_address, balance.block_number
-        );
-
         match sqlx::query(
             r#"
             INSERT INTO token_balances (
@@ -488,13 +487,7 @@ impl DatabaseService {
         .execute(&self.pool)
         .await
         {
-            Ok(result) => {
-                info!(
-                    "Successfully upserted token balance for {} holding {} (rows affected: {})",
-                    balance.account_address, balance.token_address, result.rows_affected()
-                );
-                Ok(())
-            }
+            Ok(_result) => Ok(()),
             Err(e) => {
                 error!(
                     "Failed to upsert token balance for {} holding {}: {}",
@@ -524,7 +517,10 @@ impl DatabaseService {
     }
 
     /// Get all token balances for an account
-    pub async fn get_account_token_balances(&self, account_address: &str) -> Result<Vec<TokenBalance>> {
+    pub async fn get_account_token_balances(
+        &self,
+        account_address: &str,
+    ) -> Result<Vec<TokenBalance>> {
         let balances = sqlx::query_as::<_, TokenBalance>(
             "SELECT id, account_address, token_address, balance, block_number, last_updated_block, created_at, updated_at FROM token_balances WHERE account_address = ? ORDER BY last_updated_block DESC"
         )
@@ -537,7 +533,12 @@ impl DatabaseService {
     }
 
     /// Get all accounts holding a specific token
-    pub async fn get_token_holders(&self, token_address: &str, offset: i64, limit: i64) -> Result<Vec<TokenBalance>> {
+    pub async fn get_token_holders(
+        &self,
+        token_address: &str,
+        offset: i64,
+        limit: i64,
+    ) -> Result<Vec<TokenBalance>> {
         let holders = sqlx::query_as::<_, TokenBalance>(
             "SELECT id, account_address, token_address, balance, block_number, last_updated_block, created_at, updated_at FROM token_balances WHERE token_address = ? AND balance != '0' ORDER BY CAST(balance AS REAL) DESC LIMIT ? OFFSET ?"
         )
@@ -552,7 +553,11 @@ impl DatabaseService {
     }
 
     /// Get token balances that need updating (older than specified block)
-    pub async fn get_stale_token_balances(&self, min_block: i64, limit: i64) -> Result<Vec<TokenBalance>> {
+    pub async fn get_stale_token_balances(
+        &self,
+        min_block: i64,
+        limit: i64,
+    ) -> Result<Vec<TokenBalance>> {
         let balances = sqlx::query_as::<_, TokenBalance>(
             "SELECT id, account_address, token_address, balance, block_number, last_updated_block, created_at, updated_at FROM token_balances WHERE last_updated_block < ? ORDER BY last_updated_block ASC LIMIT ?"
         )
@@ -812,7 +817,7 @@ impl DatabaseService {
     /// Get the start block and historical transaction count from cache
     pub async fn get_start_block_cache(&self) -> Result<Option<(u64, Option<i64>)>> {
         let result = sqlx::query_as::<_, (i64, Option<i64>)>(
-            "SELECT start_block, total_transactions_before FROM start_block_cache LIMIT 1"
+            "SELECT start_block, total_transactions_before FROM start_block_cache LIMIT 1",
         )
         .fetch_optional(&self.pool)
         .await
@@ -854,7 +859,7 @@ impl DatabaseService {
     /// Get the cached historical transaction count
     pub async fn get_cached_historical_count(&self) -> Result<Option<i64>> {
         let result = sqlx::query_as::<_, (Option<i64>,)>(
-            "SELECT total_transactions_before FROM start_block_cache LIMIT 1"
+            "SELECT total_transactions_before FROM start_block_cache LIMIT 1",
         )
         .fetch_optional(&self.pool)
         .await

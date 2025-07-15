@@ -1,14 +1,10 @@
+use crate::{database::PaginationParams, App};
 use axum::{
     extract::{Path, Query},
     Extension, Json,
 };
 use serde_json::json;
 use std::sync::Arc;
-
-use crate::{
-    database::{PaginationParams, Transaction},
-    App,
-};
 
 /// Get recent transactions with pagination
 pub async fn get_transactions(
@@ -86,8 +82,8 @@ pub async fn get_transaction_by_hash(
 pub async fn get_live_transactions(Extension(app): Extension<Arc<App>>) -> Json<serde_json::Value> {
     let db = &app.db;
 
-    // Get only the 5 most recent transactions, ordered by block and transaction index
-    let txs = db.get_recent_transactions(5, 0).await.unwrap_or_default();
+    // Get only the 10 most recent transactions, ordered by block and transaction index
+    let txs = db.get_recent_transactions(10, 0).await.unwrap_or_default();
 
     Json(json!({
         "transactions": txs,
@@ -114,12 +110,13 @@ pub async fn get_transaction_token_transfers(
             } else {
                 // Get token info for each transfer
                 let mut enhanced_transfers = Vec::new();
-                
+
                 for transfer in transfers {
-                    let token_info = db.get_token_by_address(&transfer.token_address)
+                    let token_info = db
+                        .get_token_by_address(&transfer.token_address)
                         .await
                         .unwrap_or(None);
-                    
+
                     let enhanced_transfer = json!({
                         "id": transfer.id,
                         "transaction_hash": transfer.transaction_hash,
@@ -136,10 +133,10 @@ pub async fn get_transaction_token_transfers(
                             "decimals": token.decimals
                         }))
                     });
-                    
+
                     enhanced_transfers.push(enhanced_transfer);
                 }
-                
+
                 Json(json!({
                     "transaction_hash": hash,
                     "token_transfers": enhanced_transfers,
@@ -148,7 +145,11 @@ pub async fn get_transaction_token_transfers(
             }
         }
         Err(e) => {
-            tracing::error!("Failed to get token transfers for transaction {}: {}", hash, e);
+            tracing::error!(
+                "Failed to get token transfers for transaction {}: {}",
+                hash,
+                e
+            );
             Json(json!({
                 "error": "Failed to get token transfers",
                 "transaction_hash": hash

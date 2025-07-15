@@ -3,6 +3,7 @@ pub mod beacon;
 pub mod config;
 pub mod database;
 pub mod executor; // Generic RPC executor
+pub mod health_cache; // Health cache service
 pub mod historical; // Add historical module
 pub mod indexer;
 pub mod network_stats; // Add network stats module
@@ -10,6 +11,10 @@ pub mod rpc;
 pub mod token_service; // Add token service module
 pub mod web;
 
+use crate::health_cache::HealthCacheService;
+use crate::historical::HistoricalTransactionService;
+use crate::network_stats::NetworkStatsService;
+use crate::token_service::TokenService;
 use anyhow::Result;
 use beacon::BeaconClient;
 use config::AppConfig;
@@ -18,9 +23,6 @@ use indexer::IndexerService;
 use rpc::RpcClient;
 use std::sync::Arc;
 use tracing::{error, info};
-use crate::historical::HistoricalTransactionService;
-use crate::network_stats::NetworkStatsService;
-use crate::token_service::TokenService;
 
 /// Represents the core application with all its services
 pub struct App {
@@ -32,6 +34,7 @@ pub struct App {
     pub historical: Arc<HistoricalTransactionService>,
     pub network_stats: Arc<NetworkStatsService>,
     pub token_service: Arc<TokenService>,
+    pub health_cache: Arc<HealthCacheService>,
 }
 
 impl App {
@@ -57,7 +60,7 @@ impl App {
         info!("Beacon client connected to {}", config.beacon_rpc_url);
 
         // Initialize token service
-        let token_service = Arc::new(TokenService::new(db.clone(), rpc.clone()));
+        let token_service = Arc::new(TokenService::new(db.clone(), rpc.clone(), config.clone()));
         info!("Token service initialized");
 
         // Initialize indexer service with token service
@@ -71,8 +74,11 @@ impl App {
         info!("Indexer service initialized with token support");
 
         // Initialize historical transaction service
-        let historical = Arc::new(HistoricalTransactionService::new(db.clone(), config.clone()));
-        
+        let historical = Arc::new(HistoricalTransactionService::new(
+            db.clone(),
+            config.clone(),
+        ));
+
         // Initialize historical data if start_block is configured
         if let Some(start_block) = config.start_block {
             if let Err(e) = historical.initialize(start_block).await {
@@ -82,14 +88,18 @@ impl App {
         info!("Historical transaction service initialized");
 
         // Initialize network stats service
-        let network_stats = Arc::new(NetworkStatsService::new(
-            Arc::clone(&rpc),
-            Arc::clone(&historical),
-        ));
-        
+        let network_stats = Arc::new(NetworkStatsService::new(Arc::clone(&rpc)));
+
         // Start background updates for network stats
         network_stats.clone().start_background_updates().await;
         info!("Network stats service initialized");
+
+        // Initialize health cache service
+        let health_cache = Arc::new(HealthCacheService::new(Arc::clone(&rpc)));
+
+        // Start background updates for health cache
+        health_cache.clone().start_background_updates().await;
+        info!("Health cache service initialized");
 
         Ok(Self {
             config,
@@ -100,6 +110,7 @@ impl App {
             historical,
             network_stats,
             token_service,
+            health_cache,
         })
     }
 

@@ -2,9 +2,7 @@
 -- Creates tables for ERC-20/ERC-721/ERC-1155 token transfers, token metadata and account balances
 -- This represents the complete token tracking system
 
--- ============================================================================
 -- TOKEN TRANSFERS TABLE - ERC-20/ERC-721/ERC-1155 token movements
--- ============================================================================
 CREATE TABLE IF NOT EXISTS token_transfers (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     transaction_hash TEXT NOT NULL,                -- Transaction containing the transfer
@@ -28,9 +26,7 @@ CREATE INDEX IF NOT EXISTS idx_token_transfers_from ON token_transfers(from_addr
 CREATE INDEX IF NOT EXISTS idx_token_transfers_to ON token_transfers(to_address);
 CREATE INDEX IF NOT EXISTS idx_token_transfers_type ON token_transfers(token_type);
 
--- ============================================================================
 -- TOKENS TABLE - Metadata for ERC-20/ERC-721/ERC-1155 tokens
--- ============================================================================
 CREATE TABLE IF NOT EXISTS tokens (
     address TEXT PRIMARY KEY NOT NULL,             -- Contract address of the token
     name TEXT,                                     -- Token name (from name() call)
@@ -44,9 +40,7 @@ CREATE TABLE IF NOT EXISTS tokens (
     updated_at DATETIME DEFAULT CURRENT_TIMESTAMP
 );
 
--- ============================================================================
 -- TOKEN_BALANCES TABLE - Account token balances (NO FOREIGN KEYS)
--- ============================================================================
 -- Note: This table deliberately has no foreign key constraints to avoid
 -- insertion issues when token balances exist for accounts not yet indexed
 CREATE TABLE IF NOT EXISTS token_balances (
@@ -63,9 +57,7 @@ CREATE TABLE IF NOT EXISTS token_balances (
     UNIQUE(account_address, token_address)
 );
 
--- ============================================================================
 -- INDEXES for performance
--- ============================================================================
 
 -- Tokens table indexes
 CREATE INDEX IF NOT EXISTS idx_tokens_symbol ON tokens(symbol);
@@ -79,9 +71,7 @@ CREATE INDEX IF NOT EXISTS idx_token_balances_token ON token_balances(token_addr
 CREATE INDEX IF NOT EXISTS idx_token_balances_block ON token_balances(block_number);
 CREATE INDEX IF NOT EXISTS idx_token_balances_updated ON token_balances(last_updated_block);
 
--- ============================================================================
 -- TRIGGERS for automatic timestamp updates
--- ============================================================================
 
 -- Update tokens updated_at timestamp
 CREATE TRIGGER IF NOT EXISTS update_tokens_updated_at

@@ -7,7 +7,7 @@ use tokio::{
     sync::{mpsc, oneshot, Semaphore},
     time,
 };
-use tracing::{debug, error, info, warn};
+use tracing::{debug, error};
 
 /// Request wrapper for the RPC executor
 pub struct RpcRequest<T, R> {
@@ -45,54 +45,50 @@ where
         let executor_fn = Arc::new(executor_fn);
         let semaphore = Arc::new(Semaphore::new(max_concurrent));
         let min_interval = Duration::from_millis(min_interval_ms);
-        
-        info!("{} RPC Executor starting: max_concurrent={}, min_interval={}ms", 
-              name, max_concurrent, min_interval_ms);
+
+        debug!(
+            "{} RPC Executor starting: max_concurrent={}, min_interval={}ms",
+            name, max_concurrent, min_interval_ms
+        );
 
         let handle = tokio::spawn(async move {
-            let mut last_request_time = Instant::now() - min_interval;
-            
             while let Some(request) = request_receiver.recv().await {
                 let executor_fn = executor_fn.clone();
                 let semaphore = semaphore.clone();
                 let request_name = name.clone();
-                
-                // Rate limiting: ensure minimum interval between requests
-                let elapsed = last_request_time.elapsed();
-                if elapsed < min_interval {
-                    let wait_time = min_interval - elapsed;
-                    debug!("{} RPC rate limiting: waiting {:?}", request_name, wait_time);
-                    time::sleep(wait_time).await;
-                }
-                last_request_time = Instant::now();
-                
-                // Spawn task to handle the request with concurrency control
+
+                // Spawn task to handle the request with concurrency control and rate limiting
                 tokio::spawn(async move {
                     // Acquire semaphore permit for concurrency control
                     let _permit = match semaphore.acquire().await {
                         Ok(permit) => permit,
                         Err(_) => {
                             error!("{} RPC failed to acquire semaphore permit", request_name);
-                            let _ = request.response_sender.send(Err(anyhow::anyhow!(
-                                "Failed to acquire semaphore permit"
-                            )));
+                            let _ = request
+                                .response_sender
+                                .send(Err(anyhow::anyhow!("Failed to acquire semaphore permit")));
                             return;
                         }
                     };
-                    
+
+                    // Rate limiting per request (after acquiring permit)
+                    if min_interval > Duration::ZERO {
+                        time::sleep(min_interval).await;
+                    }
+
                     debug!("{} RPC executing request", request_name);
-                    
+
                     // Execute the request
                     let result = executor_fn(request.operation).await;
-                    
+
                     // Send response back
                     if let Err(_) = request.response_sender.send(result) {
-                        warn!("{} RPC response receiver dropped", request_name);
+                        debug!("{} RPC response receiver dropped", request_name);
                     }
                 });
             }
-            
-            info!("{} RPC Executor stopped", name);
+
+            debug!("{} RPC Executor stopped", name);
         });
 
         Self {
@@ -104,18 +100,20 @@ where
     /// Execute a request through the rate-limited executor
     pub async fn execute(&self, operation: T) -> Result<R> {
         let (response_sender, response_receiver) = oneshot::channel();
-        
+
         let request = RpcRequest {
             operation,
             response_sender,
         };
-        
+
         // Send request to executor
-        self.request_sender.send(request)
+        self.request_sender
+            .send(request)
             .map_err(|_| anyhow::anyhow!("RPC executor receiver dropped"))?;
-        
+
         // Wait for response
-        response_receiver.await
+        response_receiver
+            .await
             .map_err(|_| anyhow::anyhow!("RPC request response sender dropped"))?
     }
 }

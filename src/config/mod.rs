@@ -9,27 +9,32 @@ pub struct AppConfig {
     pub beacon_rpc_url: String, // Beacon Chain API URL (now mandatory)
     pub api_port: u16,
     pub start_block: Option<i64>, // Changed from u64 to i64 to support -1
-    
+
     // Worker and Queue Configuration
-    pub max_concurrent_blocks: usize,           // Max blocks being processed simultaneously
-    pub worker_pool_size: usize,               // Number of worker threads in the pool
-    pub max_concurrent_tx_receipts: usize,     // Max transaction receipts fetched simultaneously
-    pub block_queue_size_multiplier: usize,    // Queue size = worker_pool_size * multiplier
-    
+    pub max_concurrent_blocks: usize, // Max blocks being processed simultaneously
+    pub worker_pool_size: usize,      // Number of worker threads in the pool
+    pub max_concurrent_tx_receipts: usize, // Max transaction receipts fetched simultaneously
+    pub block_queue_size_multiplier: usize, // Queue size = worker_pool_size * multiplier
+
     // RPC Rate Limiting Configuration
-    pub eth_rpc_min_interval_ms: u64,          // Min interval between ETH RPC requests (ms)
-    pub beacon_rpc_min_interval_ms: u64,       // Min interval between Beacon RPC requests (ms)
-    pub eth_rpc_max_concurrent: usize,         // Max concurrent ETH RPC requests
-    pub beacon_rpc_max_concurrent: usize,      // Max concurrent Beacon RPC requests
-    
+    pub eth_rpc_min_interval_ms: u64, // Min interval between ETH RPC requests (ms)
+    pub beacon_rpc_min_interval_ms: u64, // Min interval between Beacon RPC requests (ms)
+    pub eth_rpc_max_concurrent: usize, // Max concurrent ETH RPC requests
+    pub beacon_rpc_max_concurrent: usize, // Max concurrent Beacon RPC requests
+
     // Batch Processing Configuration
-    pub account_batch_size: usize,             // Batch size for account balance fetching
-    pub rpc_batch_size: usize,                // Batch size for RPC calls
+    pub account_batch_size: usize, // Batch size for account balance fetching
+    pub rpc_batch_size: usize,     // Batch size for RPC calls
     pub max_concurrent_balance_fetches: usize, // Max concurrent balance fetch operations
-    
+
+    // Token Service Configuration
+    pub token_balance_update_interval_ms: u64, // Interval between token balance updates (ms)
+    pub token_refresh_interval_ms: u64,        // Interval between token refresh operations (ms)
+
     // Timing Configuration
-    pub sync_delay_seconds: Option<u32>,       // Delay between sync attempts when already in sync
+    pub sync_delay_seconds: Option<u32>, // Delay between sync attempts when already in sync
     pub block_fetch_interval_seconds: Option<u32>, // Polling interval for new blocks
+    pub worker_timeout_seconds: u64,     // Timeout for workers waiting for blocks (seconds)
     pub bigquery_service_account_path: Option<String>,
 }
 
@@ -64,7 +69,7 @@ impl AppConfig {
                 .and_then(|p| p.parse().ok())
                 .unwrap_or(3000),
             start_block: env::var("START_BLOCK").ok().and_then(|b| b.parse().ok()),
-            
+
             // Worker and Queue Configuration
             max_concurrent_blocks: env::var("MAX_CONCURRENT_BLOCKS")
                 .ok()
@@ -82,7 +87,7 @@ impl AppConfig {
                 .ok()
                 .and_then(|n| n.parse().ok())
                 .unwrap_or(4),
-            
+
             // RPC Rate Limiting Configuration
             eth_rpc_min_interval_ms: env::var("ETH_RPC_MIN_INTERVAL_MS")
                 .ok()
@@ -100,7 +105,7 @@ impl AppConfig {
                 .ok()
                 .and_then(|n| n.parse().ok())
                 .unwrap_or(10),
-            
+
             // Batch Processing Configuration
             account_batch_size: env::var("ACCOUNT_BATCH_SIZE")
                 .ok()
@@ -114,7 +119,17 @@ impl AppConfig {
                 .ok()
                 .and_then(|n| n.parse().ok())
                 .unwrap_or(10),
-            
+
+            // Token Service Configuration
+            token_balance_update_interval_ms: env::var("TOKEN_BALANCE_UPDATE_INTERVAL_MS")
+                .ok()
+                .and_then(|n| n.parse().ok())
+                .unwrap_or(10),
+            token_refresh_interval_ms: env::var("TOKEN_REFRESH_INTERVAL_MS")
+                .ok()
+                .and_then(|n| n.parse().ok())
+                .unwrap_or(50),
+
             // Timing Configuration
             sync_delay_seconds: env::var("SYNC_DELAY_SECONDS")
                 .ok()
@@ -122,6 +137,10 @@ impl AppConfig {
             block_fetch_interval_seconds: env::var("BLOCK_FETCH_INTERVAL_SECONDS")
                 .ok()
                 .and_then(|n| n.parse().ok()),
+            worker_timeout_seconds: env::var("WORKER_TIMEOUT_SECONDS")
+                .ok()
+                .and_then(|n| n.parse().ok())
+                .unwrap_or(30),
             bigquery_service_account_path: env::var("BIGQUERY_SERVICE_ACCOUNT_PATH").ok(),
         };
 
@@ -157,30 +176,38 @@ impl AppConfig {
     /// Resolve the start_block using database cache and environment variables
     /// Database cache takes precedence. If cache exists, env values are ignored (except for warnings).
     /// Negative values in env represent relative positions: -1=latest, -2=second latest, etc.
-    pub async fn resolve_start_block(&mut self, db: &crate::database::DatabaseService, rpc: Option<&crate::rpc::RpcClient>) -> Result<(), ConfigError> {
+    pub async fn resolve_start_block(
+        &mut self,
+        db: &crate::database::DatabaseService,
+        rpc: Option<&crate::rpc::RpcClient>,
+    ) -> Result<(), ConfigError> {
         use tracing::{info, warn};
 
         // Get start_block from environment/config file
         let env_start_block = self.start_block;
 
         // Check if database cache already exists
-        let db_cache = db.get_start_block_cache().await
-            .map_err(|e| ConfigError::InvalidValue(format!("Failed to get start_block cache from database: {}", e)))?;
+        let db_cache = db.get_start_block_cache().await.map_err(|e| {
+            ConfigError::InvalidValue(format!(
+                "Failed to get start_block cache from database: {}",
+                e
+            ))
+        })?;
 
         match db_cache {
             Some((db_start_block, _)) => {
                 // Database cache exists - use it and ignore env (except for warnings)
                 info!("Using start block from database cache: {}", db_start_block);
-                
+
                 if let Some(env_value) = env_start_block {
                     if env_value >= 0 && env_value != db_start_block as i64 {
                         warn!("Start block mismatch! Database cache has {}, environment has {}. Using database value.", db_start_block, env_value);
                     }
                     // Note: Negative env values are ignored when cache exists (no warning)
                 }
-                
+
                 self.start_block = Some(db_start_block as i64);
-            },
+            }
             None => {
                 // No database cache - initialize based on environment
                 let resolved_start_block = match env_start_block {
@@ -188,15 +215,22 @@ impl AppConfig {
                         // Negative value: resolve relative to latest block
                         let latest_block = self.resolve_latest_block(rpc).await?;
                         let relative_block = latest_block + env_value; // env_value is negative
-                        let final_block = if relative_block < 0 { 0 } else { relative_block };
-                        info!("Resolved START_BLOCK={} to block: {} (latest was {})", env_value, final_block, latest_block);
+                        let final_block = if relative_block < 0 {
+                            0
+                        } else {
+                            relative_block
+                        };
+                        info!(
+                            "Resolved START_BLOCK={} to block: {} (latest was {})",
+                            env_value, final_block, latest_block
+                        );
                         final_block as u64
-                    },
+                    }
                     Some(env_value) if env_value >= 0 => {
                         // Positive value: use as-is
                         info!("Using start block from environment: {}", env_value);
                         env_value as u64
-                    },
+                    }
                     _ => {
                         // No environment value or invalid: use default of 0
                         info!("No start block configured, using default: 0");
@@ -205,9 +239,15 @@ impl AppConfig {
                 };
 
                 // Initialize the database cache
-                db.init_start_block_cache(resolved_start_block).await
-                    .map_err(|e| ConfigError::InvalidValue(format!("Failed to initialize start_block cache: {}", e)))?;
-                
+                db.init_start_block_cache(resolved_start_block)
+                    .await
+                    .map_err(|e| {
+                        ConfigError::InvalidValue(format!(
+                            "Failed to initialize start_block cache: {}",
+                            e
+                        ))
+                    })?;
+
                 self.start_block = Some(resolved_start_block as i64);
             }
         }
@@ -216,14 +256,18 @@ impl AppConfig {
     }
 
     /// Resolve START_BLOCK=-1 to the latest network block
-    async fn resolve_latest_block(&self, rpc: Option<&crate::rpc::RpcClient>) -> Result<i64, ConfigError> {
+    async fn resolve_latest_block(
+        &self,
+        rpc: Option<&crate::rpc::RpcClient>,
+    ) -> Result<i64, ConfigError> {
         if let Some(rpc_client) = rpc {
-            let latest_block = rpc_client.get_latest_block_number().await
-                .map_err(|e| ConfigError::InvalidValue(format!("Failed to get latest block from RPC: {}", e)))?;
+            let latest_block = rpc_client.get_latest_block_number().await.map_err(|e| {
+                ConfigError::InvalidValue(format!("Failed to get latest block from RPC: {}", e))
+            })?;
             Ok(latest_block as i64)
         } else {
             Err(ConfigError::InvalidValue(
-                "RPC client is required to resolve START_BLOCK=-1".to_string()
+                "RPC client is required to resolve START_BLOCK=-1".to_string(),
             ))
         }
     }

@@ -5,14 +5,12 @@ use tracing_subscriber::{layer::SubscriberExt, util::SubscriberInitExt};
 
 #[tokio::main]
 async fn main() -> anyhow::Result<()> {
-    // Initialize logging
     let log_level = std::env::var("LOG_LEVEL").unwrap_or_else(|_| "info".to_string());
     tracing_subscriber::registry()
         .with(tracing_subscriber::EnvFilter::new(log_level))
         .with(tracing_subscriber::fmt::layer())
         .init();
 
-    // Initialize the application
     let app = match App::init().await {
         Ok(app) => Arc::new(app),
         Err(e) => {
@@ -21,7 +19,6 @@ async fn main() -> anyhow::Result<()> {
         }
     };
 
-    // Start the indexer and API server in parallel
     let app_clone = app.clone();
     let indexer_handle = tokio::spawn(async move {
         if let Err(e) = app_clone.start().await {

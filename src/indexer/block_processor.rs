@@ -6,7 +6,7 @@ use crate::{
 use anyhow::{Context, Result};
 use ethers::core::types::{Block as EthBlock, Transaction as EthTransaction};
 use std::sync::Arc;
-use tracing::{debug, error, info, warn};
+use tracing::{debug, error, info};
 
 use super::transaction_processor::TransactionProcessor;
 
@@ -35,12 +35,9 @@ impl BlockProcessor {
         }
     }
 
-    /// Process a block and its transactions
     pub async fn process_block(&self, block_number: u64) -> Result<()> {
         let start_time = std::time::Instant::now();
-        debug!("Processing block #{}", block_number);
 
-        // Get block data from RPC
         let block_fetch_start = std::time::Instant::now();
         let eth_block = self
             .rpc
@@ -72,22 +69,13 @@ impl BlockProcessor {
             }
         }
 
-        // Process transactions in parallel with batched receipt fetching and batched database operations
         if !eth_block.transactions.is_empty() {
-            let tx_count = eth_block.transactions.len();
-            info!(
-                "Processing {} transactions in block #{}",
-                tx_count, block_number
-            );
-
-            // Extract transaction hashes for batch receipt fetching
             let tx_hashes: Vec<String> = eth_block
                 .transactions
                 .iter()
                 .map(|tx| format!("{:?}", tx.hash))
                 .collect();
 
-            // Fetch all receipts in parallel
             let receipts_start = std::time::Instant::now();
             let receipts = self
                 .tx_processor
@@ -95,7 +83,6 @@ impl BlockProcessor {
                 .await?;
             let receipts_time = receipts_start.elapsed();
 
-            // Prepare transactions with receipts for batch processing
             let mut tx_receipt_pairs = Vec::new();
             for (tx, receipt) in eth_block.transactions.iter().zip(receipts.iter()) {
                 if let Some(receipt) = receipt {
@@ -155,11 +142,14 @@ impl BlockProcessor {
                     }
 
                     if !all_accounts.is_empty() {
-                        info!("Inserting {} accounts from block #{}", all_accounts.len(), block_number);
                         if let Err(e) = self.db.insert_accounts_batch(&all_accounts).await {
                             error!("Failed to batch insert accounts: {}", e);
                         } else {
-                            info!("Successfully inserted {} accounts from block #{}", all_accounts.len(), block_number);
+                            info!(
+                                "Successfully inserted {} accounts from block #{}",
+                                all_accounts.len(),
+                                block_number
+                            );
                         }
                     } else {
                         info!("No accounts to insert for block #{}", block_number);
@@ -179,26 +169,15 @@ impl BlockProcessor {
                     );
                 }
             }
-
-            // Note: Not clearing cache here to maintain performance across blocks
         }
 
         let total_time = start_time.elapsed();
-        if total_time.as_millis() > 5000 {
-            warn!(
-                "Block #{} took {}ms (slow processing)",
-                block_number,
-                total_time.as_millis()
-            );
-        } else {
-            info!(
-                "Block #{} completed in {}ms ✅",
-                block_number,
-                total_time.as_millis()
-            );
-        }
+        info!(
+            "Block #{} completed in {}ms",
+            block_number,
+            total_time.as_millis()
+        );
 
-        debug!("Completed processing block #{}", block_number);
         Ok(())
     }
 
@@ -236,8 +215,6 @@ impl BlockProcessor {
             gas_used: gas_used as i64,
             gas_limit: eth_block.gas_limit.as_u64() as i64,
             transaction_count: eth_block.transactions.len() as i64,
-
-            // Extended RPC fields available in ethers 2.0.14
             miner: Some(format!("{:?}", eth_block.author)),
             total_difficulty: eth_block.total_difficulty.map(|td| td.to_string()),
             size_bytes: eth_block.size.map(|s| s.as_u64() as i64),
@@ -245,8 +222,6 @@ impl BlockProcessor {
             extra_data: Some(format!("{:?}", eth_block.extra_data)),
             state_root: Some(format!("{:?}", eth_block.state_root)),
             nonce: eth_block.nonce.map(|n| format!("{:?}", n)),
-
-            // New fields available in ethers 2.0.14
             withdrawals_root: eth_block.withdrawals_root.map(|wr| format!("{:?}", wr)),
             blob_gas_used: eth_block.blob_gas_used.map(|bgu| bgu.as_u64() as i64),
             excess_blob_gas: eth_block.excess_blob_gas.map(|ebg| ebg.as_u64() as i64),
@@ -254,14 +229,28 @@ impl BlockProcessor {
 
             // Beacon Chain fields (from separate API)
             slot: beacon_data.as_ref().and_then(|d| d["slot"].as_i64()),
-            proposer_index: beacon_data.as_ref().and_then(|d| d["proposer_index"].as_i64()),
+            proposer_index: beacon_data
+                .as_ref()
+                .and_then(|d| d["proposer_index"].as_i64()),
             epoch: beacon_data.as_ref().and_then(|d| d["epoch"].as_i64()),
-            slot_root: beacon_data.as_ref().and_then(|d| d["slot_root"].as_str().map(|s| s.to_string())),
-            parent_root: beacon_data.as_ref().and_then(|d| d["parent_root"].as_str().map(|s| s.to_string())),
-            beacon_deposit_count: beacon_data.as_ref().and_then(|d| d["beacon_deposit_count"].as_i64()),
-            graffiti: beacon_data.as_ref().and_then(|d| d["graffiti"].as_str().map(|s| s.to_string())),
-            randao_reveal: beacon_data.as_ref().and_then(|d| d["randao_reveal"].as_str().map(|s| s.to_string())),
-            randao_mix: beacon_data.as_ref().and_then(|d| d["randao_mix"].as_str().map(|s| s.to_string())),
+            slot_root: beacon_data
+                .as_ref()
+                .and_then(|d| d["slot_root"].as_str().map(|s| s.to_string())),
+            parent_root: beacon_data
+                .as_ref()
+                .and_then(|d| d["parent_root"].as_str().map(|s| s.to_string())),
+            beacon_deposit_count: beacon_data
+                .as_ref()
+                .and_then(|d| d["beacon_deposit_count"].as_i64()),
+            graffiti: beacon_data
+                .as_ref()
+                .and_then(|d| d["graffiti"].as_str().map(|s| s.to_string())),
+            randao_reveal: beacon_data
+                .as_ref()
+                .and_then(|d| d["randao_reveal"].as_str().map(|s| s.to_string())),
+            randao_mix: beacon_data
+                .as_ref()
+                .and_then(|d| d["randao_mix"].as_str().map(|s| s.to_string())),
         };
 
         Ok(block)

@@ -1,22 +1,24 @@
 use crate::{
+    config::AppConfig,
     database::{DatabaseService, Token, TokenBalance},
     rpc::RpcClient,
 };
-use anyhow::{Context, Result};
+use anyhow::Result;
 use std::sync::Arc;
-use tracing::{debug, error, info, warn};
 use tokio::time::{sleep, Duration};
+use tracing::{debug, error, info, warn};
 
 /// Service for managing token information and balances
 pub struct TokenService {
     db: Arc<DatabaseService>,
     rpc: Arc<RpcClient>,
+    config: AppConfig,
 }
 
 impl TokenService {
     /// Create a new token service
-    pub fn new(db: Arc<DatabaseService>, rpc: Arc<RpcClient>) -> Self {
-        Self { db, rpc }
+    pub fn new(db: Arc<DatabaseService>, rpc: Arc<RpcClient>, config: AppConfig) -> Self {
+        Self { db, rpc, config }
     }
 
     /// Discover token information from contract address
@@ -26,12 +28,27 @@ impl TokenService {
             return Ok(existing_token);
         }
 
-        info!("Discovering new token: {}", token_address);
-
-        // Get token metadata from contract
+        // First verify this is actually a contract and supports basic ERC-20 methods
+        // Try to get token name/symbol as a basic validation
         let name = self.rpc.get_token_name(token_address).await.unwrap_or(None);
-        let symbol = self.rpc.get_token_symbol(token_address).await.unwrap_or(None);
-        let decimals = self.rpc.get_token_decimals(token_address).await.unwrap_or(None);
+        let symbol = self
+            .rpc
+            .get_token_symbol(token_address)
+            .await
+            .unwrap_or(None);
+        let decimals = self
+            .rpc
+            .get_token_decimals(token_address)
+            .await
+            .unwrap_or(None);
+
+        // If we can't get any token metadata, it's likely not a valid ERC-20 contract
+        if name.is_none() && symbol.is_none() && decimals.is_none() {
+            return Err(anyhow::anyhow!(
+                "Token address {} does not appear to be a valid ERC-20 contract (no name, symbol, or decimals)",
+                token_address
+            ));
+        }
 
         let token = Token {
             address: token_address.to_string(),
@@ -49,7 +66,7 @@ impl TokenService {
         // Save to database
         self.db.upsert_token(&token).await?;
 
-        info!(
+        debug!(
             "Discovered token: {} ({}) at {}",
             token.name.as_deref().unwrap_or("Unknown"),
             token.symbol.as_deref().unwrap_or("?"),
@@ -66,11 +83,6 @@ impl TokenService {
         token_address: &str,
         block_number: i64,
     ) -> Result<()> {
-        info!(
-            "Updating token balance for {} holding {} at block {}",
-            account_address, token_address, block_number
-        );
-
         // Get current balance from RPC
         match self
             .rpc
@@ -78,11 +90,6 @@ impl TokenService {
             .await
         {
             Ok(balance) => {
-                info!(
-                    "Retrieved balance {} for {} holding {}",
-                    balance, account_address, token_address
-                );
-
                 let token_balance = TokenBalance {
                     id: None,
                     account_address: account_address.to_string(),
@@ -94,27 +101,28 @@ impl TokenService {
                     updated_at: None,
                 };
 
-                match self.db.upsert_token_balance(&token_balance).await {
-                    Ok(_) => {
-                        info!(
-                            "Successfully updated token balance: {} {} for {}",
-                            balance, token_address, account_address
-                        );
-                    }
-                    Err(e) => {
-                        error!(
-                            "Failed to upsert token balance for {} holding {}: {}",
-                            account_address, token_address, e
-                        );
-                        return Err(e);
-                    }
-                }
+                self.db.upsert_token_balance(&token_balance).await?;
             }
             Err(e) => {
-                warn!(
-                    "Failed to get token balance for {} holding {}: {}",
-                    account_address, token_address, e
-                );
+                let error_msg = e.to_string();
+                if error_msg.contains("not a contract") {
+                    debug!(
+                        "Skipping token balance update for {} holding {} - address is not a contract",
+                        account_address, token_address
+                    );
+                    // Mark this token as invalid to avoid future attempts
+                    // You could implement a blacklist mechanism here
+                } else if error_msg.contains("does not implement ERC-20") {
+                    debug!(
+                        "Skipping token balance update for {} holding {} - contract does not implement ERC-20 balanceOf",
+                        account_address, token_address
+                    );
+                } else {
+                    warn!(
+                        "Failed to get token balance for {} holding {}: {}",
+                        account_address, token_address, e
+                    );
+                }
             }
         }
 
@@ -127,7 +135,11 @@ impl TokenService {
         transfers: &[(String, String, String)], // (token_address, from_address, to_address)
         block_number: i64,
     ) -> Result<()> {
-        info!("Starting balance updates for {} transfers at block {}", transfers.len(), block_number);
+        info!(
+            "Starting balance updates for {} transfers at block {}",
+            transfers.len(),
+            block_number
+        );
         let mut unique_updates = std::collections::HashSet::new();
 
         // Collect unique (account, token) pairs
@@ -136,18 +148,18 @@ impl TokenService {
             unique_updates.insert((to_address.clone(), token_address.clone()));
         }
 
-        info!("Collected {} unique (account, token) pairs to update", unique_updates.len());
+        debug!(
+            "Collected {} unique (account, token) pairs to update",
+            unique_updates.len()
+        );
 
         // Update balances for each unique pair
-        for (i, (account_address, token_address)) in unique_updates.iter().enumerate() {
+        for (_i, (account_address, token_address)) in unique_updates.iter().enumerate() {
             // Skip null address (0x0000...)
             if account_address.starts_with("0x0000000000000000000000000000000000000000") {
-                info!("Skipping null address: {}", account_address);
+                debug!("Skipping null address: {}", account_address);
                 continue;
             }
-
-            info!("Updating balance {}/{}: {} holding {}", 
-                  i + 1, unique_updates.len(), account_address, token_address);
 
             if let Err(e) = self
                 .update_token_balance(account_address, token_address, block_number)
@@ -160,7 +172,10 @@ impl TokenService {
             }
 
             // Small delay to avoid overwhelming the RPC
-            sleep(Duration::from_millis(10)).await;
+            sleep(Duration::from_millis(
+                self.config.token_balance_update_interval_ms,
+            ))
+            .await;
         }
 
         info!("Completed balance updates for block {}", block_number);
@@ -168,7 +183,11 @@ impl TokenService {
     }
 
     /// Refresh stale token balances
-    pub async fn refresh_stale_balances(&self, current_block: i64, max_age_blocks: i64) -> Result<()> {
+    pub async fn refresh_stale_balances(
+        &self,
+        current_block: i64,
+        max_age_blocks: i64,
+    ) -> Result<()> {
         let min_block = current_block - max_age_blocks;
         let stale_balances = self.db.get_stale_token_balances(min_block, 100).await?;
 
@@ -193,7 +212,7 @@ impl TokenService {
             }
 
             // Small delay to avoid overwhelming the RPC
-            sleep(Duration::from_millis(50)).await;
+            sleep(Duration::from_millis(self.config.token_refresh_interval_ms)).await;
         }
 
         Ok(())

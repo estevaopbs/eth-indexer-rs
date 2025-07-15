@@ -1,19 +1,16 @@
+use crate::rpc::RpcClient;
 use anyhow::{Context, Result};
 use regex::Regex;
 use reqwest::Client;
 use std::sync::{Arc, RwLock};
 use std::time::{Duration, Instant};
 use tokio::time;
-use tracing::{debug, error, info, warn};
-
-use crate::historical::HistoricalTransactionService;
-use crate::rpc::RpcClient;
+use tracing::{debug, error, warn};
 
 /// Service for fetching and caching network-wide statistics
 pub struct NetworkStatsService {
     client: Client,
     rpc: Arc<RpcClient>,
-    historical: Arc<HistoricalTransactionService>,
     cached_network_accounts: Arc<RwLock<Option<(u64, Instant)>>>,
     cached_latest_block: Arc<RwLock<Option<(u64, Instant)>>>,
 }
@@ -22,7 +19,7 @@ impl NetworkStatsService {
     const CACHE_DURATION: Duration = Duration::from_secs(43200); // 12 hours cache
     const ETHERSCAN_URL: &'static str = "https://etherscan.io/chart/address";
 
-    pub fn new(rpc: Arc<RpcClient>, historical: Arc<HistoricalTransactionService>) -> Self {
+    pub fn new(rpc: Arc<RpcClient>) -> Self {
         let client = Client::builder()
             .user_agent(
                 "Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:140.0) Gecko/20100101 Firefox/140.0",
@@ -34,7 +31,6 @@ impl NetworkStatsService {
         Self {
             client,
             rpc,
-            historical,
             cached_network_accounts: Arc::new(RwLock::new(None)),
             cached_latest_block: Arc::new(RwLock::new(None)),
         }
@@ -170,7 +166,7 @@ impl NetworkStatsService {
             if let Ok(mut guard) = self.cached_network_accounts.write() {
                 *guard = Some((last_value, Instant::now()));
             }
-            info!("Updated network accounts: {}", last_value);
+            debug!("Updated network accounts: {}", last_value);
             Ok(())
         } else {
             Err(anyhow::anyhow!(

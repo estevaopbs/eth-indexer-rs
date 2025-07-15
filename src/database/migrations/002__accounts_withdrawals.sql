@@ -2,9 +2,7 @@
 -- Creates tables for account tracking and Ethereum staking/withdrawal data
 -- This represents post-Shanghai fork functionality
 
--- ============================================================================
 -- ACCOUNTS TABLE - Track account balances and activity
--- ============================================================================
 CREATE TABLE IF NOT EXISTS accounts (
     address TEXT PRIMARY KEY,                      -- Account address
     balance TEXT NOT NULL,                         -- Current balance in wei
@@ -19,9 +17,7 @@ CREATE INDEX IF NOT EXISTS idx_accounts_balance ON accounts(balance);
 CREATE INDEX IF NOT EXISTS idx_accounts_first_seen ON accounts(first_seen_block);
 CREATE INDEX IF NOT EXISTS idx_accounts_last_seen ON accounts(last_seen_block);
 
--- ============================================================================
 -- WITHDRAWALS TABLE - Ethereum Shanghai fork validator withdrawals
--- ============================================================================
 CREATE TABLE IF NOT EXISTS withdrawals (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     block_number INTEGER NOT NULL,                 -- Block containing withdrawal

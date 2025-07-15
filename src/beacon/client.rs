@@ -1,9 +1,12 @@
 use anyhow::{Context, Result};
 use reqwest::Client;
 use serde::{Deserialize, Serialize};
-use tracing::{debug, error, info};
+use tracing::{debug, error, info, warn};
 
-use crate::{config::AppConfig, executor::{RpcExecutor, BeaconRpcOperation, BeaconRpcResponse}};
+use crate::{
+    config::AppConfig,
+    executor::{BeaconRpcOperation, BeaconRpcResponse, RpcExecutor},
+};
 
 /// Beacon Chain client for fetching consensus layer data
 pub struct BeaconClient {
@@ -90,11 +93,11 @@ impl BeaconClient {
     pub fn new(beacon_url: &str, config: &AppConfig) -> Self {
         let client = Client::new();
         let base_url = beacon_url.trim_end_matches('/').to_string();
-        
+
         // Clone for the closure
         let client_clone = client.clone();
         let base_url_clone = base_url.clone();
-        
+
         let executor = RpcExecutor::new(
             "Beacon".to_string(),
             config.beacon_rpc_max_concurrent,
@@ -102,12 +105,10 @@ impl BeaconClient {
             move |operation| {
                 let client = client_clone.clone();
                 let base_url = base_url_clone.clone();
-                async move {
-                    Self::execute_beacon_operation(client, base_url, operation).await
-                }
+                async move { Self::execute_beacon_operation(client, base_url, operation).await }
             },
         );
-        
+
         Self {
             client,
             base_url,
@@ -123,22 +124,100 @@ impl BeaconClient {
     ) -> Result<BeaconRpcResponse> {
         match operation {
             BeaconRpcOperation::GetBeaconDataForBlock(block_number) => {
-                debug!("🔍 Fetching beacon data for block {}", block_number);
-                
-                // Simplified implementation - return empty beacon data for now
-                let empty_data = serde_json::json!({
-                    "slot": null,
-                    "proposer_index": null,
-                    "epoch": null,
-                    "slot_root": null,
-                    "parent_root": null,
-                    "beacon_deposit_count": null,
-                    "graffiti": null,
-                    "randao_reveal": null,
-                    "randao_mix": null
-                });
-                
-                Ok(BeaconRpcResponse::BeaconDataForBlock(empty_data))
+                debug!("Fetching beacon data for block {}", block_number);
+
+                // First, get the slot for this execution block
+                let slot = match Self::get_slot_for_execution_block(block_number).await {
+                    Ok(Some(slot)) => slot,
+                    Ok(None) => {
+                        debug!("No slot found for execution block {}", block_number);
+                        return Ok(BeaconRpcResponse::BeaconDataForBlock(serde_json::json!({
+                            "slot": null,
+                            "proposer_index": null,
+                            "epoch": null,
+                            "slot_root": null,
+                            "parent_root": null,
+                            "beacon_deposit_count": null,
+                            "graffiti": null,
+                            "randao_reveal": null,
+                            "randao_mix": null
+                        })));
+                    }
+                    Err(e) => {
+                        debug!("Error getting slot for block {}: {}", block_number, e);
+                        return Ok(BeaconRpcResponse::BeaconDataForBlock(serde_json::json!({
+                            "slot": null,
+                            "proposer_index": null,
+                            "epoch": null,
+                            "slot_root": null,
+                            "parent_root": null,
+                            "beacon_deposit_count": null,
+                            "graffiti": null,
+                            "randao_reveal": null,
+                            "randao_mix": null
+                        })));
+                    }
+                };
+
+                // Get beacon block data for this slot
+                let beacon_data =
+                    match Self::get_beacon_block_for_slot(client.clone(), base_url.clone(), slot)
+                        .await
+                    {
+                        Ok(Some(block_data)) => {
+                            let epoch = slot / 32; // 32 slots per epoch
+
+                            serde_json::json!({
+                                "slot": slot,
+                                "proposer_index": block_data.get("proposer_index"),
+                                "epoch": epoch,
+                                "slot_root": block_data.get("state_root"),
+                                "parent_root": block_data.get("parent_root"),
+                                "beacon_deposit_count": block_data
+                                    .get("body")
+                                    .and_then(|body| body.get("deposits"))
+                                    .and_then(|deposits| deposits.as_array())
+                                    .map(|arr| arr.len() as i64),
+                                "graffiti": block_data
+                                    .get("body")
+                                    .and_then(|body| body.get("graffiti")),
+                                "randao_reveal": block_data
+                                    .get("body")
+                                    .and_then(|body| body.get("randao_reveal")),
+                                "randao_mix": null
+                            })
+                        }
+                        Ok(None) => {
+                            debug!("No beacon block found for slot {}", slot);
+                            serde_json::json!({
+                                "slot": slot,
+                                "proposer_index": null,
+                                "epoch": slot / 32,
+                                "slot_root": null,
+                                "parent_root": null,
+                                "beacon_deposit_count": null,
+                                "graffiti": null,
+                                "randao_reveal": null,
+                                "randao_mix": null
+                            })
+                        }
+                        Err(e) => {
+                            debug!("Error getting beacon block for slot {}: {}", slot, e);
+                            serde_json::json!({
+                                "slot": slot,
+                                "proposer_index": null,
+                                "epoch": slot / 32,
+                                "slot_root": null,
+                                "parent_root": null,
+                                "beacon_deposit_count": null,
+                                "graffiti": null,
+                                "randao_reveal": null,
+                                "randao_mix": null
+                            })
+                        }
+                    };
+
+                Ok(BeaconRpcResponse::BeaconDataForBlock(beacon_data))
             }
             BeaconRpcOperation::TestConnection => {
                 let url = format!("{}/eth/v1/node/health", base_url);
@@ -167,7 +246,11 @@ impl BeaconClient {
 
     /// Test connection to Beacon node
     pub async fn test_connection(&self) -> Result<()> {
-        match self.executor.execute(BeaconRpcOperation::TestConnection).await? {
+        match self
+            .executor
+            .execute(BeaconRpcOperation::TestConnection)
+            .await?
+        {
             BeaconRpcResponse::TestConnection(_) => Ok(()),
             _ => Err(anyhow::anyhow!("Unexpected response type")),
         }
@@ -175,7 +258,11 @@ impl BeaconClient {
 
     /// Get beacon data for a specific execution block
     pub async fn get_beacon_data_for_block(&self, block_number: u64) -> Result<serde_json::Value> {
-        match self.executor.execute(BeaconRpcOperation::GetBeaconDataForBlock(block_number)).await? {
+        match self
+            .executor
+            .execute(BeaconRpcOperation::GetBeaconDataForBlock(block_number))
+            .await?
+        {
             BeaconRpcResponse::BeaconDataForBlock(data) => Ok(data),
             _ => Err(anyhow::anyhow!("Unexpected response type")),
         }
@@ -193,10 +280,10 @@ impl BeaconClient {
             .await
             .context(format!("Failed to make request to {}", url))?;
 
-        info!("Beacon header response status: {}", response.status());
+        debug!("Beacon header response status: {}", response.status());
 
         if response.status() == 404 {
-            info!("Beacon header not found for slot {}", slot);
+            warn!("Beacon header not found for slot {}", slot);
             return Ok(None);
         }
 
@@ -217,28 +304,22 @@ impl BeaconClient {
             .text()
             .await
             .context("Failed to read beacon header response body")?;
-        info!("Beacon header response body: {}", response_text);
+        debug!("Beacon header response body: {}", response_text);
 
-        info!("🔧 Attempting to parse beacon header JSON...");
         let api_response: ApiHeaderResponse<BeaconBlockHeader> =
             match serde_json::from_str(&response_text) {
                 Ok(response) => {
-                    info!("✅ Successfully parsed beacon header JSON");
+                    debug!("Successfully parsed beacon header JSON");
                     response
                 }
                 Err(e) => {
-                    info!("❌ Failed to parse beacon header JSON: {}", e);
+                    warn!("Failed to parse beacon header JSON: {}", e);
                     return Err(anyhow::anyhow!(
                         "Failed to parse beacon header response: {}",
                         e
                     ));
                 }
             };
-
-        info!(
-            "✅ Found beacon header with slot: {}",
-            api_response.data.slot
-        );
         Ok(Some(api_response.data))
     }
 
@@ -254,10 +335,10 @@ impl BeaconClient {
             .await
             .context(format!("Failed to make request to {}", url))?;
 
-        info!("Beacon block response status: {}", response.status());
+        debug!("Beacon block response status: {}", response.status());
 
         if response.status() == 404 {
-            info!("Beacon block not found for slot {}", slot);
+            warn!("Beacon block not found for slot {}", slot);
             return Ok(None);
         }
 
@@ -287,14 +368,13 @@ impl BeaconClient {
             }
         );
 
-        info!("🔧 Attempting to parse beacon block JSON...");
         let api_response: ApiResponse<BeaconBlock> = match serde_json::from_str(&response_text) {
             Ok(response) => {
-                info!("✅ Successfully parsed beacon block JSON");
+                debug!("Successfully parsed beacon block JSON");
                 response
             }
             Err(e) => {
-                info!("❌ Failed to parse beacon block JSON: {}", e);
+                warn!("Failed to parse beacon block JSON: {}", e);
                 return Err(anyhow::anyhow!(
                     "Failed to parse beacon block response: {}",
                     e
@@ -303,7 +383,7 @@ impl BeaconClient {
         };
 
         info!(
-            "✅ Found beacon block with slot: {}",
+            "Found beacon block with slot: {}",
             api_response.data.message.slot
         );
         Ok(Some(api_response.data.message))
@@ -316,7 +396,6 @@ impl BeaconClient {
         // The merge happened at block 15537394 and slot 4700013
         const MERGE_BLOCK: u64 = 15537394;
         const MERGE_SLOT: u64 = 4700013;
-        const SECONDS_PER_SLOT: u64 = 12;
 
         if block_number < MERGE_BLOCK {
             return Ok(None); // Pre-merge blocks don't have slots
@@ -347,6 +426,67 @@ impl BeaconClient {
         }
     }
 
+    /// Get slot for execution block using slot estimation
+    async fn get_slot_for_execution_block(block_number: u64) -> Result<Option<u64>> {
+        // For post-merge blocks, estimate slot based on block number
+        const MERGE_BLOCK: u64 = 15537394;
+        const MERGE_SLOT: u64 = 4700013;
+
+        if block_number < MERGE_BLOCK {
+            return Ok(None); // Pre-merge blocks don't have slots
+        }
+
+        // Estimate slot based on block progression
+        let estimated_slot = MERGE_SLOT + (block_number - MERGE_BLOCK);
+        Ok(Some(estimated_slot))
+    }
+
+    /// Get beacon block data for a specific slot
+    async fn get_beacon_block_for_slot(
+        client: Client,
+        base_url: String,
+        slot: u64,
+    ) -> Result<Option<serde_json::Value>> {
+        let url = format!("{}/eth/v2/beacon/blocks/{}", base_url, slot);
+
+        let response = match client.get(&url).send().await {
+            Ok(response) => response,
+            Err(e) => {
+                debug!("Failed to fetch beacon block for slot {}: {}", slot, e);
+                return Ok(None);
+            }
+        };
+
+        if response.status() == 404 {
+            debug!("Beacon block not found for slot {}", slot);
+            return Ok(None);
+        }
+
+        if !response.status().is_success() {
+            debug!(
+                "Beacon block request failed with status: {}",
+                response.status()
+            );
+            return Ok(None);
+        }
+
+        let response_json: serde_json::Value = match response.json().await {
+            Ok(json) => json,
+            Err(e) => {
+                debug!("Failed to parse beacon block response: {}", e);
+                return Ok(None);
+            }
+        };
+
+        // Extract the block data from the response
+        if let Some(data) = response_json.get("data") {
+            if let Some(message) = data.get("message") {
+                return Ok(Some(message.clone()));
+            }
+        }
+
+        Ok(None)
+    }
 }
 
 /// Beacon chain data that can be associated with an execution block

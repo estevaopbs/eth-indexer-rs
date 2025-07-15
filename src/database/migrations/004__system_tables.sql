@@ -2,9 +2,7 @@
 -- Creates system tables for configuration and historical data caching
 -- This represents internal system state and performance optimization
 
--- ============================================================================
 -- START BLOCK CACHE TABLE - Consolidates config and historical cache
--- ============================================================================
 CREATE TABLE IF NOT EXISTS start_block_cache (
     start_block INTEGER PRIMARY KEY,
     total_transactions_before INTEGER NULL,

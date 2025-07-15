@@ -1,9 +1,7 @@
+use crate::{database::IndexerStats, App};
 use axum::{Extension, Json};
 use serde_json::json;
 use std::sync::Arc;
-use tracing::warn;
-
-use crate::{database::IndexerStats, App};
 
 /// Get indexer statistics
 pub async fn get_stats(Extension(app): Extension<Arc<App>>) -> Json<IndexerStats> {
@@ -93,7 +91,7 @@ pub async fn get_stats(Extension(app): Extension<Arc<App>>) -> Json<IndexerStats
         total_transactions_declared: total_transactions_declared_with_history,
         total_transactions_indexed: historical_count + total_transactions_indexed,
         real_transactions_indexed: total_transactions_indexed, // Only transactions from start_block onwards
-        total_blockchain_transactions, // Use the calculated value
+        total_blockchain_transactions,                         // Use the calculated value
         total_accounts: total_accounts as i64,
         indexer_status: indexer_status.to_string(),
         sync_percentage,

@@ -116,7 +116,7 @@ pub async fn get_blocks_since(
         .and_then(|s| s.parse::<i64>().ok())
         .unwrap_or(0);
 
-    // Get blocks with number > since_block, ordered by block_number DESC, limit 5
+    // Get blocks with number > since_block, ordered by block_number DESC, limit 10
     let blocks = match sqlx::query_as::<_, crate::database::Block>(
         r#"
         SELECT number, hash, parent_hash, timestamp, gas_used, gas_limit, transaction_count,
@@ -127,7 +127,7 @@ pub async fn get_blocks_since(
         FROM blocks 
         WHERE number > ? 
         ORDER BY number DESC 
-        LIMIT 5
+        LIMIT 10
         "#,
     )
     .bind(since_block)
@@ -156,7 +156,7 @@ pub async fn get_transactions_since(
 
     let transactions = if since_hash.is_empty() {
         // First load - get latest 5 transactions
-        db.get_recent_transactions(5, 0).await.unwrap_or_default()
+        db.get_recent_transactions(10, 0).await.unwrap_or_default()
     } else {
         // Get transactions newer than the provided hash
         match sqlx::query_as::<_, crate::database::Transaction>(
@@ -178,7 +178,7 @@ pub async fn get_transactions_since(
                     WHERE (block_number > ?)
                        OR (block_number = ? AND transaction_index > ?)
                     ORDER BY block_number DESC, transaction_index DESC
-                    LIMIT 5
+                    LIMIT 10
                     "#,
                 )
                 .bind(ref_tx.block_number)

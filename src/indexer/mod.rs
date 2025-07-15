@@ -2,10 +2,7 @@ mod block_processor;
 mod transaction_processor;
 
 use crate::{
-    beacon::BeaconClient, 
-    config::AppConfig, 
-    database::DatabaseService, 
-    rpc::RpcClient,
+    beacon::BeaconClient, config::AppConfig, database::DatabaseService, rpc::RpcClient,
     token_service::TokenService,
 };
 use anyhow::Result;
@@ -15,7 +12,7 @@ use std::sync::{
 };
 use tokio::sync::mpsc;
 use tokio::time::{self, Duration};
-use tracing::{error, info, warn, debug};
+use tracing::{debug, error, info, warn};
 
 use block_processor::BlockProcessor;
 use transaction_processor::TransactionProcessor;
@@ -24,12 +21,11 @@ use transaction_processor::TransactionProcessor;
 pub struct IndexerService {
     db: Arc<DatabaseService>,
     rpc: Arc<RpcClient>,
-    beacon: Arc<BeaconClient>,
+    // beacon: Arc<BeaconClient>,
     config: AppConfig,
     is_running: Arc<AtomicBool>,
     block_processor: BlockProcessor,
-    tx_processor: TransactionProcessor,
-    // Shared state for the block queue
+    // tx_processor: TransactionProcessor,
     next_block_to_fetch: Arc<AtomicI64>,
     latest_network_block: Arc<AtomicI64>,
 }
@@ -43,16 +39,19 @@ impl IndexerService {
         config: AppConfig,
     ) -> Self {
         let tx_processor = TransactionProcessor::new(db.clone(), rpc.clone(), config.clone());
-        let block_processor = BlockProcessor::new(db.clone(), rpc.clone(), beacon.clone(), tx_processor.clone());
+        let block_processor = BlockProcessor::new(
+            db.clone(),
+            rpc.clone(),
+            beacon.clone(),
+            tx_processor.clone(),
+        );
 
         Self {
             db,
             rpc,
-            beacon,
             config,
             is_running: Arc::new(AtomicBool::new(false)),
             block_processor,
-            tx_processor,
             next_block_to_fetch: Arc::new(AtomicI64::new(0)),
             latest_network_block: Arc::new(AtomicI64::new(0)),
         }
@@ -67,21 +66,24 @@ impl IndexerService {
         config: AppConfig,
     ) -> Self {
         let tx_processor = TransactionProcessor::with_token_service(
-            db.clone(), 
-            rpc.clone(), 
+            db.clone(),
+            rpc.clone(),
             config.clone(),
-            token_service
+            token_service,
         );
-        let block_processor = BlockProcessor::new(db.clone(), rpc.clone(), beacon.clone(), tx_processor.clone());
+        let block_processor = BlockProcessor::new(
+            db.clone(),
+            rpc.clone(),
+            beacon.clone(),
+            tx_processor.clone(),
+        );
 
         Self {
             db,
             rpc,
-            beacon,
             config,
             is_running: Arc::new(AtomicBool::new(false)),
             block_processor,
-            tx_processor,
             next_block_to_fetch: Arc::new(AtomicI64::new(0)),
             latest_network_block: Arc::new(AtomicI64::new(0)),
         }
@@ -106,7 +108,8 @@ impl IndexerService {
                 self.initialize_start_block().await?;
 
                 // Create block queue channel
-                let queue_size = self.config.worker_pool_size * self.config.block_queue_size_multiplier;
+                let queue_size =
+                    self.config.worker_pool_size * self.config.block_queue_size_multiplier;
                 let (block_sender, block_receiver) = mpsc::channel::<i64>(queue_size);
                 let receiver = Arc::new(tokio::sync::Mutex::new(block_receiver));
 
@@ -151,18 +154,26 @@ impl IndexerService {
             }
             None => {
                 let start_block = self.config.start_block.map(|n| n as i64).unwrap_or(0);
-                info!("No blocks found, starting from configured block: {}", start_block);
+                info!(
+                    "No blocks found, starting from configured block: {}",
+                    start_block
+                );
                 start_block
             }
         };
 
-        self.next_block_to_fetch.store(latest_indexed_block, Ordering::Relaxed);
-        
+        self.next_block_to_fetch
+            .store(latest_indexed_block, Ordering::Relaxed);
+
         // Get initial network block number
         let network_block = self.rpc.get_latest_block_number().await? as i64;
-        self.latest_network_block.store(network_block, Ordering::Relaxed);
-        
-        info!("Indexer initialized: next_block={}, network_block={}", latest_indexed_block, network_block);
+        self.latest_network_block
+            .store(network_block, Ordering::Relaxed);
+
+        info!(
+            "Indexer initialized: next_block={}, network_block={}",
+            latest_indexed_block, network_block
+        );
         Ok(())
     }
 
@@ -172,15 +183,24 @@ impl IndexerService {
         let is_running = self.is_running.clone();
         let next_block_to_fetch = self.next_block_to_fetch.clone();
         let latest_network_block = self.latest_network_block.clone();
-        let poll_interval = Duration::from_secs(
-            self.config.block_fetch_interval_seconds.unwrap_or(3) as u64
-        );
+        let poll_interval =
+            Duration::from_secs(self.config.block_fetch_interval_seconds.unwrap_or(3) as u64);
 
         tokio::spawn(async move {
-            info!("Block fetcher started with poll interval: {:?}", poll_interval);
-            
+            info!(
+                "Block fetcher started with poll interval: {:?}",
+                poll_interval
+            );
+
             while is_running.load(Ordering::Relaxed) {
-                match Self::fetch_and_queue_blocks(&rpc, &block_sender, &next_block_to_fetch, &latest_network_block).await {
+                match Self::fetch_and_queue_blocks(
+                    &rpc,
+                    &block_sender,
+                    &next_block_to_fetch,
+                    &latest_network_block,
+                )
+                .await
+                {
                     Ok(blocks_queued) => {
                         if blocks_queued > 0 {
                             debug!("Fetcher queued {} new blocks", blocks_queued);
@@ -194,7 +214,7 @@ impl IndexerService {
                 // Wait for next poll cycle
                 time::sleep(poll_interval).await;
             }
-            
+
             info!("Block fetcher stopped");
         })
     }
@@ -211,7 +231,7 @@ impl IndexerService {
         latest_network_block.store(current_network_block, Ordering::Relaxed);
 
         let next_block = next_block_to_fetch.load(Ordering::Relaxed);
-        
+
         if next_block > current_network_block {
             // We're ahead of the network, nothing to do
             return Ok(0);
@@ -229,9 +249,13 @@ impl IndexerService {
                     blocks_queued += 1;
                 }
                 Err(mpsc::error::TrySendError::Full(_)) => {
-                    // Queue is full, stop queuing for now
-                    debug!("Block queue is full, will retry on next cycle");
-                    break;
+                    // Queue is full, wait briefly and retry instead of breaking
+                    debug!(
+                        "Block queue is full (size: {}), waiting briefly before retry",
+                        sender.capacity()
+                    );
+                    tokio::time::sleep(tokio::time::Duration::from_millis(100)).await;
+                    continue; // Retry the same block
                 }
                 Err(mpsc::error::TrySendError::Closed(_)) => {
                     // Receiver is closed, workers stopped
@@ -245,8 +269,13 @@ impl IndexerService {
         next_block_to_fetch.store(block_to_queue, Ordering::Relaxed);
 
         if blocks_queued > 0 {
-            info!("Queued {} blocks (range: {} to {}), network at block {}", 
-                  blocks_queued, next_block, block_to_queue - 1, current_network_block);
+            info!(
+                "Queued {} blocks (range: {} to {}), network at block {}",
+                blocks_queued,
+                next_block,
+                block_to_queue - 1,
+                current_network_block
+            );
         }
 
         Ok(blocks_queued)
@@ -259,7 +288,9 @@ impl IndexerService {
     ) -> Vec<tokio::task::JoinHandle<()>> {
         let worker_count = self.config.worker_pool_size;
         let mut worker_handles = Vec::new();
-        let semaphore = Arc::new(tokio::sync::Semaphore::new(self.config.max_concurrent_blocks));
+        let semaphore = Arc::new(tokio::sync::Semaphore::new(
+            self.config.max_concurrent_blocks,
+        ));
 
         info!("Starting {} workers for block processing", worker_count);
 
@@ -268,6 +299,7 @@ impl IndexerService {
             let block_processor = self.block_processor.clone();
             let semaphore_clone = semaphore.clone();
             let is_running = self.is_running.clone();
+            let worker_timeout_seconds = self.config.worker_timeout_seconds;
 
             let worker_handle = tokio::spawn(async move {
                 info!("Worker {} started and ready for blocks", worker_id);
@@ -276,10 +308,15 @@ impl IndexerService {
                     // Get next block from queue
                     let block_number = {
                         let mut rx = receiver_clone.lock().await;
-                        match time::timeout(Duration::from_secs(10), rx.recv()).await {
+                        match time::timeout(Duration::from_secs(worker_timeout_seconds), rx.recv())
+                            .await
+                        {
                             Ok(Some(block)) => block,
                             Ok(None) => {
-                                info!("Worker {} received shutdown signal (channel closed)", worker_id);
+                                info!(
+                                    "Worker {} received shutdown signal (channel closed)",
+                                    worker_id
+                                );
                                 break;
                             }
                             Err(_) => {
@@ -294,7 +331,10 @@ impl IndexerService {
                     let permit = match semaphore_clone.acquire().await {
                         Ok(permit) => permit,
                         Err(_) => {
-                            error!("Worker {} failed to acquire semaphore permit for block #{}", worker_id, block_number);
+                            error!(
+                                "Worker {} failed to acquire semaphore permit for block #{}",
+                                worker_id, block_number
+                            );
                             continue;
                         }
                     };
@@ -302,11 +342,13 @@ impl IndexerService {
                     debug!("Worker {} processing block #{}", worker_id, block_number);
                     match block_processor.process_block(block_number as u64).await {
                         Ok(_) => {
-                            info!("Worker {} ✅ completed block #{}", worker_id, block_number);
+                            info!("Worker {} completed block #{}", worker_id, block_number);
                         }
                         Err(e) => {
-                            error!("Worker {} ❌ failed to process block #{}: {}", worker_id, block_number, e);
-                            // Continue processing other blocks instead of failing entirely
+                            error!(
+                                "Worker {} failed to process block #{}: {}",
+                                worker_id, block_number, e
+                            );
                         }
                     }
                     drop(permit); // Release permit for next block

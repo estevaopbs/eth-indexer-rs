@@ -1,7 +1,6 @@
 #[cfg(test)]
 mod tests {
     use eth_indexer_rs::{config::AppConfig, database::DatabaseService, rpc::RpcClient};
-    use std::sync::Arc;
 
     #[tokio::test]
     async fn test_database_connection() {
