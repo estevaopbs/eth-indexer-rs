@@ -39,7 +39,7 @@ function formatEth(value) {
 // Load all data without loading indicators (unified 1-second refresh)
 async function refreshAllData() {
   const refreshPromises = [];
-  
+
   // Stats refresh
   refreshPromises.push(
     loadStats()
@@ -52,7 +52,7 @@ async function refreshAllData() {
         dataStatus.stats.available = false;
       })
   );
-  
+
   // Blocks refresh  
   refreshPromises.push(
     loadRecentBlocksDelta()
@@ -65,7 +65,7 @@ async function refreshAllData() {
         dataStatus.blocks.available = false;
       })
   );
-  
+
   // Transactions refresh
   refreshPromises.push(
     loadRecentTransactionsDelta()
@@ -78,10 +78,10 @@ async function refreshAllData() {
         dataStatus.transactions.available = false;
       })
   );
-  
+
   // Wait for all promises to complete (whether successful or failed)
   await Promise.allSettled(refreshPromises);
-  
+
   // Update sync status after all attempts
   updateSyncStatus();
 }
@@ -588,13 +588,11 @@ function updateTotalBlockchainTransactions(data) {
     return;
   }
 
-  // Check if historical transactions are available
-  if (data.historical_transactions_count && data.historical_transactions_count > 0) {
-    // Historical data is available, show the sum
-    const total = data.historical_transactions_count + data.real_transactions_indexed;
-    updateStatWithAnimation("total-blockchain-transactions", formatNumber(total));
+  // Check if total blockchain transactions are available
+  if (data.total_blockchain_transactions && data.total_blockchain_transactions > 0) {
+    updateStatWithAnimation("total-blockchain-transactions", formatNumber(data.total_blockchain_transactions));
   } else {
-    // Historical data not available, show unavailable message
+    // Data not available, show unavailable message
     element.textContent = "Data unavailable";
     element.classList.add("text-gray-500");
   }
@@ -617,17 +615,17 @@ let dataStatus = {
 function updateSyncStatus() {
   const syncStatusElement = document.getElementById("sync-status");
   const statusIconElement = document.getElementById("status-icon");
-  
+
   if (!syncStatusElement || !statusIconElement) return;
-  
+
   const now = Date.now();
   const staleThreshold = 10000; // 10 seconds
-  
+
   // Check if any data source is stale or unavailable
   const blocksStale = !dataStatus.blocks.available || (now - dataStatus.blocks.lastUpdate) > staleThreshold;
   const transactionsStale = !dataStatus.transactions.available || (now - dataStatus.transactions.lastUpdate) > staleThreshold;
   const statsStale = !dataStatus.stats.available || (now - dataStatus.stats.lastUpdate) > staleThreshold;
-  
+
   if (blocksStale || transactionsStale || statsStale) {
     // Some data is stale or unavailable
     syncStatusElement.textContent = "Data Stale";
@@ -638,13 +636,13 @@ function updateSyncStatus() {
         <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-2.5L13.732 4c-.77-.833-1.964-.833-2.732 0L3.732 16.5c-.77.833.192 2.5 1.732 2.5z" />
       </svg>
     `;
-    
+
     // Add details about what's stale
     let staleItems = [];
     if (blocksStale) staleItems.push("blocks");
     if (transactionsStale) staleItems.push("transactions");
     if (statsStale) staleItems.push("stats");
-    
+
     const detailElement = syncStatusElement.parentElement.querySelector('.text-xs');
     if (detailElement) {
       detailElement.textContent = `Stale: ${staleItems.join(', ')}`;
@@ -659,7 +657,7 @@ function updateSyncStatus() {
         <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 8v4m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-2.5L13.732 4c-.77-.833-1.964-.833-2.732 0L3.732 16.5c-.77.833.192 2.5 1.732 2.5z" />
       </svg>
     `;
-    
+
     const detailElement = syncStatusElement.parentElement.querySelector('.text-xs');
     if (detailElement) {
       detailElement.textContent = "Some data unavailable";
@@ -674,7 +672,7 @@ function updateSyncStatus() {
         <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
       </svg>
     `;
-    
+
     const detailElement = syncStatusElement.parentElement.querySelector('.text-xs');
     if (detailElement) {
       detailElement.textContent = "All systems operational";
@@ -690,7 +688,7 @@ document.addEventListener("DOMContentLoaded", () => {
   setTimeout(() => {
     setInterval(refreshAllData, refreshInterval);
   }, 2000); // Wait 2 seconds before starting delta updates
-  
+
   // Update sync status immediately and then every second
   updateSyncStatus();
   setInterval(updateSyncStatus, 1000);
